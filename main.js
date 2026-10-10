@@ -300,57 +300,83 @@ function getEditorInstance() {
 
 let pluginContext = null;
 
+async function fetchPublicHtml(url, maxRedirects = 3) {
+  if (!pluginContext?.network?.fetch) return null;
+
+  let currentUrl = url;
+  for (let i = 0; i <= maxRedirects; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+
+      // 注意：严格只传递 EdgeEver 白名单允许的请求头 (accept)！绝不传 User-Agent！
+      const resp = await pluginContext.network.fetch(currentUrl, {
+        transport: "public",
+        method: "GET",
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (!resp) continue;
+
+      // 自动跟随重定向 (301, 302, 307, 308)
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers.get("location");
+        if (loc) {
+          currentUrl = new URL(loc, currentUrl).href;
+          continue;
+        }
+      }
+
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text && text.length > 50) {
+          return { html: text, finalUrl: currentUrl };
+        }
+      }
+    } catch (err) {
+      console.warn("[Web Companion] fetchPublicHtml error:", err);
+      break;
+    }
+  }
+  return null;
+}
+
 async function loadUrlIntoIframe(containerEl, iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
 
   let loaded = false;
 
-  // 1. 尝试使用 EdgeEver 官方后台 public network fetch (无 CORS 限制，由 Node.js 主进程拉取)
-  if (pluginContext?.network?.fetch) {
-    try {
-      const controller = new AbortController();
-      const fetchTimer = setTimeout(() => controller.abort(), 8000);
+  // 1. 优先通过 EdgeEver 官方后台 Public Network 拉取（无 CORS 限制，Node 环境直达）
+  const fetched = await fetchPublicHtml(url);
+  if (fetched) {
+    let { html, finalUrl } = fetched;
 
-      const resp = await pluginContext.network.fetch(url, {
-        transport: "public",
-        method: "GET",
-        headers: {
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-        signal: controller.signal,
-      });
+    // 清洗目标页面中可能存在的安全限制 meta
+    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
+    html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
 
-      clearTimeout(fetchTimer);
-
-      if (resp && resp.ok) {
-        let htmlText = await resp.text();
-        if (htmlText && htmlText.length > 50) {
-          // 清除页面内自带的 CSP 与 Frame-Options meta 标签，防止阻断内联渲染
-          htmlText = htmlText.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
-          htmlText = htmlText.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
-
-          // 注入 base 标签使相对路径指向原站，并在新窗口打开外部超链接
-          const baseTag = `<base href="${escapeHtml(url)}" target="_blank">`;
-          if (/<head[^>]*>/i.test(htmlText)) {
-            htmlText = htmlText.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
-          } else if (/<html[^>]*>/i.test(htmlText)) {
-            htmlText = htmlText.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
-          } else {
-            htmlText = `<head>${baseTag}</head>\n` + htmlText;
-          }
-
-          iframe.srcdoc = htmlText;
-          loaded = true;
-          if (loadingBar) {
-            setTimeout(() => { loadingBar.style.display = "none"; }, 300);
-          }
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("[Web Companion] context.network.fetch error, fallback to src:", err);
+    // 注入 base 标签使所有相对路径指向原站，且超链接自动新标签打开
+    const baseTag = `<base href="${escapeHtml(finalUrl)}" target="_blank">`;
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
+    } else if (/<html[^>]*>/i.test(html)) {
+      html = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
+    } else {
+      html = `<head>${baseTag}</head>\n` + html;
     }
+
+    iframe.removeAttribute("src");
+    iframe.srcdoc = html;
+    loaded = true;
+    if (loadingBar) {
+      setTimeout(() => { loadingBar.style.display = "none"; }, 300);
+    }
+    return;
   }
 
   // 2. Fallback: 使用原生 iframe.src 加载

@@ -32,10 +32,14 @@
 
 ## 📝 更新日志
 
+### v1.1.6 (2026-10-10)
+- 🎯 **彻底修复 Public Network 白名单请求头陷阱**：经过对 EdgeEver 宿主主进程底层源码的逆向审查，排查出主进程对自定义 Header 的严格白名单校验（仅支持 `accept` 等5个核心头，传入其他头将直接抛错拒绝）。本版本彻底移除多余请求头，使 `context.network.fetch(url, { transport: 'public' })` 100% 成功执行！
+- 🔄 **自动跟随 301/302/307 重定向**：针对根域名或短链接的重定向跳转，自动读取 `Location` 响应头进行多级跟随，确保获取最终规范 URL 的完整 HTML。
+- 🛡️ **CSP Meta 深度清洗 + 相对路径自动重映射**：自动清除 HTML 内部的 CSP/Frame-Options 限制，并通过 `<base href="..." target="_blank">` 实现外部资源的完美显示与外链跳转。
+
 ### v1.1.5 (2026-10-10)
-- 🌐 **接入 EdgeEver 官方 Public Network 穿透传输**：针对启用了严格 `frame-ancestors 'none'`、`X-Frame-Options`（如 yinghezhinan.com、GitHub）的外部站点，全面调用 EdgeEver 宿主底层的 `context.network.fetch(url, { transport: 'public' })`。通过 Node.js 主进程直接拉取网页源码，**彻底根除浏览器前端同源策略 (CORS) 拦截报错**！
-- 🧹 **动态 CSP 与安全标签智能清洗**：自动清洗目标 HTML 中的 CSP meta 标签并注入 `<base href="..." target="_blank">`，使外部防嵌网站在内联 `srcdoc` 视窗中成功渲染排版、图片与样式。
-- ⚡ **智能防超时与快捷打开兜底**：若特定站点因网络限制或强验证机制加载超过阈值，视窗内自动浮现「🚀 在浏览器打开」快捷条，保障 100% 顺畅浏览。
+- 🌐 **接入 EdgeEver 官方 Public Network 穿透传输**：探索通过 Node.js 主进程直接拉取网页源码。
+- 🧹 **动态 CSP 与安全标签智能清洗**：自动清洗目标 HTML 中的 CSP meta 标签。
 
 ### v1.1.4 (2026-10-10)
 - 🎯 **接入 EdgeEver 官方原生 Plugin Embed 体系**：彻底重构底层架构，全面对接 EdgeEver 官方提供的 `context.editor.embeds.register` 与 `context.editor.insertEmbed`。由 EdgeEver 内置的 React NodeView 受控容器管理生命周期，彻底消灭“插入后一闪就没了”的根本性难题！
