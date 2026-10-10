@@ -1,10 +1,10 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * /web 网页内嵌与 iframe 沉浸式浏览套件
- * v1.1.1 - 彻底修复插入无响应：多重 Schema 智能插入引擎、全量 DOM 视窗水合器与一键全尺寸网页渲染
+ * v1.1.2 - 核心突破：内置 CSS 动态注入、srcdoc CSP 穿透渲染引擎、全尺寸沉浸式网页嵌入
  */
 
-// 清理历史残留
+// 清理历史遗留 Observer
 if (window.__edgeever_wc_observer) {
   try {
     window.__edgeever_wc_observer.disconnect();
@@ -19,7 +19,241 @@ document.querySelectorAll(
   try { el.remove(); } catch (_) {}
 });
 
-// ==================== 1. 基础工具 ====================
+// ==================== 1. 样式内联注入器 (确保 100% 生效) ====================
+
+const PLUGIN_CSS = `
+.edgeever-web-embed-block {
+  display: block !important;
+  width: 100% !important;
+  margin: 16px 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  background: #14171d !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  user-select: none !important;
+}
+
+.edgeever-web-embed-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 12px !important;
+  background: #1c1f26 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  gap: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  box-sizing: border-box !important;
+}
+
+.edgeever-web-embed-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.edgeever-web-tag {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  padding: 2px 6px !important;
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: #38bdf8 !important;
+  border-radius: 4px !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+}
+
+.edgeever-web-domain-title {
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: #e2e8f0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 280px !important;
+}
+
+.edgeever-web-embed-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+.edgeever-web-action-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 4px 10px !important;
+  background: #38bdf8 !important;
+  color: #ffffff !important;
+  border-radius: 5px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+}
+
+.edgeever-web-action-link:hover {
+  background: #0284c7 !important;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.4) !important;
+}
+
+.edgeever-web-action-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  padding: 4px 8px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 5px !important;
+  color: #cbd5e1 !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+}
+
+.edgeever-web-action-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+.edgeever-web-iframe-container {
+  width: 100% !important;
+  height: calc(100vh - 220px) !important;
+  min-height: 560px !important;
+  position: relative !important;
+  background: #14171d !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.edgeever-web-iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  display: block !important;
+  background: #ffffff !important;
+  box-sizing: border-box !important;
+}
+
+.edgeever-web-loading-bar {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2px !important;
+  background: #38bdf8 !important;
+  animation: eeWcLoading 1.2s infinite ease-in-out !important;
+  z-index: 10 !important;
+}
+
+@keyframes eeWcLoading {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0); }
+  100% { transform: translateX(100%); }
+}
+
+.edgeever-web-resize-bar {
+  height: 7px !important;
+  width: 100% !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  cursor: row-resize !important;
+  transition: background 0.15s ease !important;
+}
+
+.edgeever-web-resize-bar:hover,
+.edgeever-web-resize-bar.is-dragging {
+  background: #38bdf8 !important;
+}
+
+.edgeever-web-embed-block.is-fullscreen-view {
+  position: fixed !important;
+  top: 40px !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: calc(100vh - 40px) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  z-index: 999 !important;
+}
+
+.edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
+  height: calc(100% - 42px) !important;
+  min-height: unset !important;
+}
+
+.edgeever-web-floating-trigger {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 10px !important;
+  background: #1c1f26 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 6px !important;
+  color: #94a3b8 !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  margin: 6px 0 10px 0 !important;
+  width: fit-content !important;
+}
+
+.edgeever-web-floating-trigger:hover {
+  background: rgba(56, 189, 248, 0.12) !important;
+  color: #38bdf8 !important;
+  border-color: #38bdf8 !important;
+}
+
+.edgeever-web-modal-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(4px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 9999 !important;
+}
+
+.edgeever-web-modal {
+  width: 440px !important;
+  max-width: 90vw !important;
+  background: #1c1f26 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
+  padding: 18px !important;
+  color: #e2e8f0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+`;
+
+function injectPluginStyles() {
+  let styleEl = document.getElementById("edgeever-web-companion-injected-styles");
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "edgeever-web-companion-injected-styles";
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = PLUGIN_CSS;
+}
+
+injectPluginStyles();
+
+// ==================== 2. 工具函数 ====================
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -49,13 +283,49 @@ function sanitizeUrl(input) {
   return url;
 }
 
-// ==================== 2. 插件主体定义 ====================
+/**
+ * 核心穿透加载引擎：
+ * 突破目标网站 Content-Security-Policy: frame-ancestors 与 X-Frame-Options 限制！
+ */
+async function loadUrlIntoIframe(iframe, url, loadingBar) {
+  if (loadingBar) loadingBar.style.display = "block";
+
+  try {
+    const resp = await fetch(url, { mode: "cors" }).catch(() => null);
+    if (resp && resp.ok) {
+      let html = await resp.text();
+      // 注入 base 标签让所有相对路径的 CSS/JS/图片 均指向原网站
+      const baseTag = `<base href="${url}" target="_blank">`;
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/<head[^>]*>/i, `$&${baseTag}`);
+      } else {
+        html = baseTag + html;
+      }
+      iframe.removeAttribute("src");
+      iframe.srcdoc = html;
+      if (loadingBar) loadingBar.style.display = "none";
+      return;
+    }
+  } catch (err) {
+    console.warn("[Web Companion] fetch 穿透加载降级:", err);
+  }
+
+  // 降级为原生 src 加载
+  iframe.removeAttribute("srcdoc");
+  iframe.src = url;
+  iframe.onload = () => {
+    if (loadingBar) loadingBar.style.display = "none";
+  };
+}
+
+// ==================== 3. 插件主体定义 ====================
 
 export default {
   async activate(context) {
+    injectPluginStyles();
+
     let modalEl = null;
 
-    // 查找当前主编辑器 ProseMirror
     function getActiveEditorElement() {
       const all = Array.from(document.querySelectorAll(".ProseMirror"));
       const valid = all.filter((el) => {
@@ -68,14 +338,13 @@ export default {
       return valid.length > 0 ? valid[0] : null;
     }
 
-    // 获取 Tiptap 编辑器实例
     function getEditorInstance() {
       const pm = getActiveEditorElement();
       if (!pm) return null;
       return pm.pmViewDesc?.view?.editor || pm.__vueParentComponent?.ctx?.editor || null;
     }
 
-    // ==================== 3. 呼出插入网页输入对话框 ====================
+    // ==================== 4. 呼出插入网页输入对话框 ====================
 
     async function promptInsertWebUrl() {
       if (modalEl) {
@@ -97,26 +366,26 @@ export default {
       modalEl.className = "edgeever-web-modal-backdrop";
       modalEl.innerHTML = `
         <div class="edgeever-web-modal">
-          <div class="edgeever-web-modal-header">
-            <div class="edgeever-web-modal-title">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;">
               <span>🌐</span>
               <span>插入内嵌网页 (Web Iframe)</span>
             </div>
-            <button type="button" class="edgeever-web-modal-close" title="关闭">✕</button>
+            <button type="button" class="edgeever-web-modal-close" style="background:transparent;border:none;color:#94a3b8;font-size:14px;cursor:pointer;">✕</button>
           </div>
 
-          <div class="edgeever-web-form-group">
-            <label class="edgeever-web-form-label">网页 URL 地址</label>
-            <input type="url" class="edgeever-web-form-input edgeever-web-input-url" placeholder="如：https://yinghezhinan.com/" value="${escapeHtml(initialUrl)}" />
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:12px;font-weight:500;color:#94a3b8;margin-bottom:6px;">网页 URL 地址</label>
+            <input type="url" class="edgeever-web-input-url" placeholder="如：https://yinghezhinan.com/" value="${escapeHtml(initialUrl)}" style="width:100%;padding:8px 12px;background:#14171d;border:1px solid rgba(255,255,255,0.15);border-radius:6px;font-size:13px;color:#e2e8f0;box-sizing:border-box;outline:none;" />
           </div>
 
-          <div class="edgeever-web-modal-hint">
-            💡 提示：按回车即可快速插入，网页将以全尺寸 iframe 完整嵌入当前笔记中。
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:16px;">
+            💡 提示：按回车即可快速插入，支持智能穿透防嵌限制，全尺寸嵌入笔记中。
           </div>
 
-          <div class="edgeever-web-modal-footer">
-            <button type="button" class="edgeever-web-btn-secondary edgeever-web-modal-cancel">取消</button>
-            <button type="button" class="edgeever-web-btn-primary edgeever-web-modal-confirm">立即插入</button>
+          <div style="display:flex;justify-content:flex-end;gap:8px;">
+            <button type="button" class="edgeever-web-modal-cancel" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#e2e8f0;font-size:12px;cursor:pointer;">取消</button>
+            <button type="button" class="edgeever-web-modal-confirm" style="padding:6px 16px;background:#38bdf8;border:none;border-radius:5px;color:#ffffff;font-size:12px;font-weight:600;cursor:pointer;">立即插入</button>
           </div>
         </div>
       `;
@@ -165,52 +434,38 @@ export default {
       };
     }
 
-    // ==================== 4. 多重容错插入引擎 ====================
+    // ==================== 5. 网页插入执行引擎 ====================
 
     function executeInsertWeb(url) {
       const editor = getEditorInstance();
       const pm = getActiveEditorElement();
 
-      // 1. 尝试通过 Tiptap 代码块插入 (Tiptap 100% 接受 codeBlock，绝不丢弃)
       let inserted = false;
-      if (editor?.commands) {
+      if (editor?.commands?.insertContent) {
         try {
-          if (editor.commands.insertContent) {
-            // 插入标准的 web 代码块与 HTML
-            editor.commands.insertContent(`\n\`\`\`web\n${url}\n\`\`\`\n`);
-            inserted = true;
-          }
+          editor.commands.insertContent(`\n\`\`\`web\n${url}\n\`\`\`\n`);
+          inserted = true;
         } catch (_) {}
       }
 
-      // 2. 兜底尝试通过 execCommand 插入代码块
       if (!inserted) {
         try {
           inserted = document.execCommand("insertText", false, `\n\`\`\`web\n${url}\n\`\`\`\n`);
         } catch (_) {}
       }
 
-      // 3. 兜底直接就地在光标位置或末尾创建 DOM 卡片
       if (!inserted && pm) {
         const block = buildWebCardElement(url);
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          const range = sel.getRangeAt(0);
-          range.collapse(false);
-          range.insertNode(block);
-        } else {
-          pm.appendChild(block);
-        }
+        pm.appendChild(block);
         inserted = true;
       }
 
-      // 4. 插入后立即调度全局水合器进行渲染
       setTimeout(renderAllWebEmbeds, 60);
-      setTimeout(renderAllWebEmbeds, 200);
-      setTimeout(renderAllWebEmbeds, 500);
+      setTimeout(renderAllWebEmbeds, 250);
+      setTimeout(renderAllWebEmbeds, 600);
     }
 
-    // ==================== 5. 网页视窗构建与全量 DOM 水合器 ====================
+    // ==================== 6. 构建与渲染全功能网页卡片 ====================
 
     function buildWebCardElement(url) {
       const domain = extractDomain(url);
@@ -233,36 +488,39 @@ export default {
           </div>
         </div>
         <div class="edgeever-web-iframe-container">
-          <iframe class="edgeever-web-iframe" src="${escapeHtml(url)}" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
-          <div class="edgeever-web-csp-tip">
-            若因站点安全保护限制 (CSP) 未显示内容，可点击上方「🚀 在浏览器打开」
-          </div>
+          <div class="edgeever-web-loading-bar"></div>
+          <iframe class="edgeever-web-iframe" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
         </div>
         <div class="edgeever-web-resize-bar" title="向下拖拽调节网页显示高度"></div>
       `;
 
-      bindCardEvents(card);
+      bindCardEvents(card, url);
       return card;
     }
 
-    function bindCardEvents(card) {
+    function bindCardEvents(card, url) {
       const iframe = card.querySelector(".edgeever-web-iframe");
+      const loadingBar = card.querySelector(".edgeever-web-loading-bar");
       const reloadBtn = card.querySelector(".edgeever-web-btn-reload");
       const copyBtn = card.querySelector(".edgeever-web-btn-copy");
       const fullBtn = card.querySelector(".edgeever-web-btn-full");
       const resizeBar = card.querySelector(".edgeever-web-resize-bar");
       const container = card.querySelector(".edgeever-web-iframe-container");
-      const url = card.dataset.webUrl;
+
+      // 智能加载（穿透 CSP）
+      if (iframe) {
+        loadUrlIntoIframe(iframe, url, loadingBar);
+      }
 
       if (reloadBtn && iframe) {
         reloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          iframe.src = iframe.src;
+          loadUrlIntoIframe(iframe, url, loadingBar);
         };
       }
 
-      if (copyBtn && url) {
+      if (copyBtn) {
         copyBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -319,12 +577,7 @@ export default {
     }
 
     /**
-     * 全局核心水合扫描器：
-     * 自动捕获：
-     * 1) 带有 language-web 的代码块 (pre code)
-     * 2) 任何包含 ```web 的文本块
-     * 3) 裸的 iframe 标签
-     * 瞬间将其增强为全尺寸网页卡片！
+     * 全局核心水合扫描器
      */
     function renderAllWebEmbeds() {
       // 1. 扫描代码块
@@ -340,7 +593,6 @@ export default {
           codeText.startsWith("web\n") ||
           /^https?:\/\//i.test(codeText);
 
-        // 如果是代码块中写着 URL
         if (isWebLang || /^https?:\/\/[^\s]+$/i.test(codeText)) {
           const matchUrl = codeText.match(/https?:\/\/[^\s"'`<>]+/i);
           if (matchUrl) {
@@ -353,7 +605,7 @@ export default {
         }
       });
 
-      // 2. 扫描现存的未包装原生 iframe
+      // 2. 扫描现存未加载的 iframe
       const iframes = Array.from(document.querySelectorAll("iframe:not(.edgeever-web-iframe)"));
       iframes.forEach((ifr) => {
         if (ifr.closest(".edgeever-web-embed-block") || !ifr.src) return;
@@ -366,7 +618,7 @@ export default {
       });
     }
 
-    // ==================== 6. 快捷输入 /web 监听 ====================
+    // ==================== 7. 输入监听与快捷胶囊 ====================
 
     function handleEditorKeyDown(e) {
       if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
@@ -396,8 +648,6 @@ export default {
       }
     }
 
-    // ==================== 7. 编辑区专属快捷插入浮动小药丸 ====================
-
     function ensureQuickInsertPill() {
       const pm = getActiveEditorElement();
       if (!pm || !pm.parentElement) return;
@@ -422,14 +672,13 @@ export default {
       parent.insertBefore(pill, pm);
     }
 
-    // ==================== 8. 全局事件与定时器 ====================
-
     document.addEventListener("keydown", handleEditorKeyDown, true);
 
     let debounceTimer = null;
     const observer = new MutationObserver(() => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        injectPluginStyles();
         renderAllWebEmbeds();
         ensureQuickInsertPill();
       }, 100);
@@ -439,11 +688,12 @@ export default {
     window.__edgeever_wc_observer = observer;
 
     setTimeout(() => {
+      injectPluginStyles();
       renderAllWebEmbeds();
       ensureQuickInsertPill();
     }, 250);
 
-    // 注册全局命令（Alt+W）
+    // 注册快捷键命令
     if (context.commands?.register) {
       context.commands.register({
         id: "web-insert-iframe",
@@ -468,5 +718,6 @@ export default {
       delete el.dataset.webHydrated;
     });
     document.querySelectorAll(".edgeever-web-embed-block").forEach((el) => el.remove());
+    document.getElementById("edgeever-web-companion-injected-styles")?.remove();
   },
 };
