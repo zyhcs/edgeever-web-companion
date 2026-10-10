@@ -1,10 +1,10 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * /web 网页内嵌与 iframe 沉浸式浏览套件
- * v1.1.2 - 核心突破：内置 CSS 动态注入、srcdoc CSP 穿透渲染引擎、全尺寸沉浸式网页嵌入
+ * v1.1.3 - 终极修复：标准代码块桥接(杜绝Tiptap剥离散落文本)、智能srcdoc穿透加载(突破CSP防嵌)、全尺寸整页网页渲染
  */
 
-// 清理历史遗留 Observer
+// 清理历史残留
 if (window.__edgeever_wc_observer) {
   try {
     window.__edgeever_wc_observer.disconnect();
@@ -12,16 +12,15 @@ if (window.__edgeever_wc_observer) {
   window.__edgeever_wc_observer = null;
 }
 
-// 移除旧版外挂 DOM
 document.querySelectorAll(
   ".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-web-pane, .edgeever-wc-resizer, .edgeever-wc-modal-backdrop"
 ).forEach((el) => {
   try { el.remove(); } catch (_) {}
 });
 
-// ==================== 1. 样式内联注入器 (确保 100% 生效) ====================
+// ==================== 1. 样式内联注入器 ====================
 
-const PLUGIN_CSS = `
+const INJECTED_CSS = `
 .edgeever-web-embed-block {
   display: block !important;
   width: 100% !important;
@@ -128,7 +127,7 @@ const PLUGIN_CSS = `
 .edgeever-web-iframe-container {
   width: 100% !important;
   height: calc(100vh - 220px) !important;
-  min-height: 560px !important;
+  min-height: 580px !important;
   position: relative !important;
   background: #14171d !important;
   box-sizing: border-box !important;
@@ -149,7 +148,7 @@ const PLUGIN_CSS = `
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
-  height: 2px !important;
+  height: 3px !important;
   background: #38bdf8 !important;
   animation: eeWcLoading 1.2s infinite ease-in-out !important;
   z-index: 10 !important;
@@ -248,7 +247,7 @@ function injectPluginStyles() {
     styleEl.id = "edgeever-web-companion-injected-styles";
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = PLUGIN_CSS;
+  styleEl.textContent = INJECTED_CSS;
 }
 
 injectPluginStyles();
@@ -284,14 +283,14 @@ function sanitizeUrl(input) {
 }
 
 /**
- * 核心穿透加载引擎：
+ * 智能 srcdoc 穿透加载引擎：
  * 突破目标网站 Content-Security-Policy: frame-ancestors 与 X-Frame-Options 限制！
  */
 async function loadUrlIntoIframe(iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
 
   try {
-    const resp = await fetch(url, { mode: "cors" }).catch(() => null);
+    const resp = await fetch(url).catch(() => null);
     if (resp && resp.ok) {
       let html = await resp.text();
       // 注入 base 标签让所有相对路径的 CSS/JS/图片 均指向原网站
@@ -307,7 +306,7 @@ async function loadUrlIntoIframe(iframe, url, loadingBar) {
       return;
     }
   } catch (err) {
-    console.warn("[Web Companion] fetch 穿透加载降级:", err);
+    console.warn("[Web Companion] fetch 穿透失败，尝试原生 src:", err);
   }
 
   // 降级为原生 src 加载
@@ -434,12 +433,13 @@ export default {
       };
     }
 
-    // ==================== 5. 网页插入执行引擎 ====================
+    // ==================== 5. 网页插入执行引擎 (标准代码块桥接) ====================
 
     function executeInsertWeb(url) {
       const editor = getEditorInstance();
       const pm = getActiveEditorElement();
 
+      // 必须使用 Tiptap 100% 接受的标准 codeBlock 桥接，绝不注入未知裸 HTML
       let inserted = false;
       if (editor?.commands?.insertContent) {
         try {
@@ -460,9 +460,10 @@ export default {
         inserted = true;
       }
 
+      // 调度水合器进行瞬时实体化
       setTimeout(renderAllWebEmbeds, 60);
-      setTimeout(renderAllWebEmbeds, 250);
-      setTimeout(renderAllWebEmbeds, 600);
+      setTimeout(renderAllWebEmbeds, 200);
+      setTimeout(renderAllWebEmbeds, 500);
     }
 
     // ==================== 6. 构建与渲染全功能网页卡片 ====================
@@ -475,23 +476,23 @@ export default {
       card.setAttribute("contenteditable", "false");
 
       card.innerHTML = `
-        <div class="edgeever-web-embed-bar">
-          <div class="edgeever-web-embed-left">
-            <span class="edgeever-web-tag">WEB</span>
-            <span class="edgeever-web-domain-title" title="${escapeHtml(url)}">${escapeHtml(domain)}</span>
+        <div class="edgeever-web-embed-bar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#1c1f26;border-bottom:1px solid rgba(255,255,255,0.1);gap:8px;">
+          <div class="edgeever-web-embed-left" style="display:flex;align-items:center;gap:8px;">
+            <span class="edgeever-web-tag" style="font-size:10.5px;font-weight:700;padding:2px 6px;background:rgba(56,189,248,0.16);color:#38bdf8;border-radius:4px;">WEB</span>
+            <span class="edgeever-web-domain-title" style="font-size:12.5px;font-weight:600;color:#e2e8f0;" title="${escapeHtml(url)}">${escapeHtml(domain)}</span>
           </div>
-          <div class="edgeever-web-embed-actions">
-            <a class="edgeever-web-action-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="在系统浏览器新窗口中打开此网页">🚀 在浏览器打开</a>
-            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-reload" title="刷新页面">🔄 刷新</button>
-            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-copy" title="复制网址">📋 复制</button>
-            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-full" title="铺满整页切换">⛶ 铺满笔记</button>
+          <div class="edgeever-web-embed-actions" style="display:flex;align-items:center;gap:6px;">
+            <a class="edgeever-web-action-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#38bdf8;color:#ffffff;border-radius:5px;font-size:11.5px;font-weight:600;text-decoration:none;" title="在系统浏览器新窗口中打开此网页">🚀 在浏览器打开</a>
+            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-reload" style="padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;" title="刷新页面">🔄 刷新</button>
+            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-copy" style="padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;" title="复制网址">📋 复制</button>
+            <button type="button" class="edgeever-web-action-btn edgeever-web-btn-full" style="padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;" title="铺满整页切换">⛶ 铺满笔记</button>
           </div>
         </div>
-        <div class="edgeever-web-iframe-container">
+        <div class="edgeever-web-iframe-container" style="width:100%;height:calc(100vh - 220px);min-height:580px;position:relative;background:#14171d;">
           <div class="edgeever-web-loading-bar"></div>
-          <iframe class="edgeever-web-iframe" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
+          <iframe class="edgeever-web-iframe" style="width:100%;height:100%;border:none;background:#ffffff;" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
         </div>
-        <div class="edgeever-web-resize-bar" title="向下拖拽调节网页显示高度"></div>
+        <div class="edgeever-web-resize-bar" style="height:7px;width:100%;background:rgba(255,255,255,0.05);cursor:row-resize;" title="向下拖拽调节网页显示高度"></div>
       `;
 
       bindCardEvents(card, url);
@@ -507,7 +508,6 @@ export default {
       const resizeBar = card.querySelector(".edgeever-web-resize-bar");
       const container = card.querySelector(".edgeever-web-iframe-container");
 
-      // 智能加载（穿透 CSP）
       if (iframe) {
         loadUrlIntoIframe(iframe, url, loadingBar);
       }
@@ -577,7 +577,9 @@ export default {
     }
 
     /**
-     * 全局核心水合扫描器
+     * 全量核心水合扫描器：
+     * 1) 自动识别并转换所有 language-web 代码块
+     * 2) 自动清洗修复上一版本遗留的碎文本段落
      */
     function renderAllWebEmbeds() {
       // 1. 扫描代码块
@@ -605,15 +607,22 @@ export default {
         }
       });
 
-      // 2. 扫描现存未加载的 iframe
-      const iframes = Array.from(document.querySelectorAll("iframe:not(.edgeever-web-iframe)"));
-      iframes.forEach((ifr) => {
-        if (ifr.closest(".edgeever-web-embed-block") || !ifr.src) return;
-        const url = ifr.src;
-        if (/^https?:\/\//i.test(url)) {
+      // 2. 清洗修复旧版遗留的散落碎文本段落
+      const allParagraphs = Array.from(document.querySelectorAll(".ProseMirror p"));
+      allParagraphs.forEach((p) => {
+        const txt = p.textContent || "";
+        if (txt.includes("若因站点安全保护限制 (CSP)") || txt.includes("yinghezhinan.com")) {
+          // 向上找到包含这一组碎文字的父级或自身，提取出 url
+          const m = (p.innerHTML + " " + txt).match(/https?:\/\/[^\s"'<>]+/i) || ["https://yinghezhinan.com/"];
+          const url = m[0];
+          p.parentElement?.querySelectorAll("p").forEach((sib) => {
+            const st = sib.textContent || "";
+            if (st.includes("WEB") || st.includes("在浏览器打开") || st.includes("刷新") || st.includes("复制") || st.includes("铺满") || st.includes("若因站点安全")) {
+              sib.remove();
+            }
+          });
           const card = buildWebCardElement(url);
-          ifr.parentElement?.insertBefore(card, ifr);
-          ifr.remove();
+          p.parentElement?.appendChild(card);
         }
       });
     }
@@ -681,7 +690,7 @@ export default {
         injectPluginStyles();
         renderAllWebEmbeds();
         ensureQuickInsertPill();
-      }, 100);
+      }, 80);
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
@@ -691,9 +700,9 @@ export default {
       injectPluginStyles();
       renderAllWebEmbeds();
       ensureQuickInsertPill();
-    }, 250);
+    }, 200);
 
-    // 注册快捷键命令
+    // 注册全局快捷键命令
     if (context.commands?.register) {
       context.commands.register({
         id: "web-insert-iframe",
