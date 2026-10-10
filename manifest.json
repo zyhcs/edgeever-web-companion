@@ -1,15 +1,15 @@
 {
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
-  "name": "Web Companion: 网页伴侣与双屏对照浏览",
-  "version": "1.0.3",
+  "name": "Web Companion: /web 插入网页与 iframe 全尺寸沉浸浏览",
+  "version": "1.1.0",
   "apiVersion": "2",
   "settingsUi": "host",
-  "description": "Seamless in-note web browsing suite for EdgeEver: Bind URLs to any note, switch smoothly among Note View, Fullscreen Web View, and Split Edit View, drag-to-resize split panes, customize default opening views, and clip web excerpts with one click.",
+  "description": "Directly type /web to insert an interactive full-size web iframe in your notes. Features an in-note toolbar with open in browser, refresh, copy URL, full-note immersive expansion, and height dragging.",
   "locales": {
     "zh-CN": {
-      "name": "网页伴侣 (Web Companion): 双屏对照与三模态浏览",
-      "description": "为 EdgeEver 打造的无侵入式网页伴侣插件。无需新建特殊笔记类型，任意普通笔记均可一键关联网址，无缝在【笔记视图】、【网页视图】与【双屏对照编辑】三大模态间自由切换。支持弹性拖拽分屏宽度、自定义每篇笔记的下次默认打开视图、一键摘录网页到笔记，打造边查一手资料边记录的沉浸式工作台。"
+      "name": "网页伴侣 (Web Companion): /web 插入网页与 iframe 沉浸浏览",
+      "description": "极简纯净的网页内嵌套件。在笔记中任意位置直接输入 /web 并回车或空格，即刻呼出输入框并插入全尺寸 iframe 网页视窗。支持整页铺满笔记、在系统浏览器打开、一键刷新与自由拖拽调节高度，零外挂入侵，与笔记内容完美融合。"
     }
   },
   "author": "zyhcs",
@@ -18,55 +18,8 @@
   "permissions": [
     "notes:read",
     "notes:write",
-    "metadata:read",
     "editor:read",
     "editor:write",
-    "ui:commands",
-    "ui:notices",
-    "storage"
-  ],
-  "settings": {
-    "fields": [
-      {
-        "key": "default_view_mode",
-        "type": "select",
-        "label": "全局默认首次打开视图",
-        "default": "note",
-        "options": [
-          { "value": "note", "label": "📝 笔记视图 (纯净笔记文本)" },
-          { "value": "split", "label": "🌓 双屏编辑 (左侧笔记 + 右侧网页)" },
-          { "value": "web", "label": "🌐 网页视图 (全屏沉浸浏览)" }
-        ]
-      },
-      {
-        "key": "default_split_ratio",
-        "type": "select",
-        "label": "双屏模式默认分屏比例",
-        "default": "50",
-        "options": [
-          { "value": "35", "label": "35% 笔记 : 65% 网页 (重度网页查阅)" },
-          { "value": "50", "label": "50% 笔记 : 50% 网页 (标准对等平分)" },
-          { "value": "65", "label": "65% 笔记 : 35% 网页 (重度笔记记录)" }
-        ]
-      },
-      {
-        "key": "show_top_switch_bar",
-        "type": "boolean",
-        "label": "在关联网页的笔记顶部显示三模态切换胶囊栏",
-        "default": true
-      },
-      {
-        "key": "enable_quick_excerpt",
-        "type": "boolean",
-        "label": "允许右侧网页工具栏一键摘录网页信息至左侧笔记",
-        "default": true
-      },
-      {
-        "key": "remember_note_preference",
-        "type": "boolean",
-        "label": "自动记忆并持久化每篇笔记独立的默认打开视图",
-        "default": true
-      }
-    ]
-  }
+    "ui:commands"
+  ]
 }
