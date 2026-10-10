@@ -32,10 +32,14 @@
 
 ## 📝 更新日志
 
+### v1.1.5 (2026-10-10)
+- 🌐 **接入 EdgeEver 官方 Public Network 穿透传输**：针对启用了严格 `frame-ancestors 'none'`、`X-Frame-Options`（如 yinghezhinan.com、GitHub）的外部站点，全面调用 EdgeEver 宿主底层的 `context.network.fetch(url, { transport: 'public' })`。通过 Node.js 主进程直接拉取网页源码，**彻底根除浏览器前端同源策略 (CORS) 拦截报错**！
+- 🧹 **动态 CSP 与安全标签智能清洗**：自动清洗目标 HTML 中的 CSP meta 标签并注入 `<base href="..." target="_blank">`，使外部防嵌网站在内联 `srcdoc` 视窗中成功渲染排版、图片与样式。
+- ⚡ **智能防超时与快捷打开兜底**：若特定站点因网络限制或强验证机制加载超过阈值，视窗内自动浮现「🚀 在浏览器打开」快捷条，保障 100% 顺畅浏览。
+
 ### v1.1.4 (2026-10-10)
 - 🎯 **接入 EdgeEver 官方原生 Plugin Embed 体系**：彻底重构底层架构，全面对接 EdgeEver 官方提供的 `context.editor.embeds.register` 与 `context.editor.insertEmbed`。由 EdgeEver 内置的 React NodeView 受控容器管理生命周期，彻底消灭“插入后一闪就没了”的根本性难题！
 - 💾 **完美支持双向持久化**：无论是富文本模式还是 Markdown 模式，均受 EdgeEver 官方解析器原生支持，在切换笔记、重新打开、输入文字与保存时 100% 稳定驻留。
-- 🚀 **智能 srcdoc 穿透加载**：完整保留穿透引擎，自动绕过外部站点 `frame-ancestors 'none'` CSP 防嵌限制，流畅渲染网页。
 
 ### v1.1.3 (2026-10-10)
 - 🛡️ **标准代码块桥接机制**：探索代码块桥接与前端即时水合。

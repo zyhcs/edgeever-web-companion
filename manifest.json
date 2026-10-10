@@ -2,7 +2,7 @@
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
   "name": "Web Companion: /web 插入网页与 iframe 全尺寸沉浸浏览",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "apiVersion": "2",
   "settingsUi": "host",
   "description": "Directly type /web to insert an interactive full-size web iframe in your notes. Features an in-note toolbar with open in browser, refresh, copy URL, full-note immersive expansion, and height dragging.",
@@ -20,6 +20,9 @@
     "notes:write",
     "editor:read",
     "editor:write",
-    "ui:commands"
+    "ui:commands",
+    "ui:embeds",
+    "network",
+    "network:public"
   ]
 }

@@ -298,51 +298,89 @@ function getEditorInstance() {
 
 // ==================== 3. 智能穿透加载引擎 (突破 CSP frame-ancestors 'none') ====================
 
-async function loadUrlIntoIframe(iframe, url, loadingBar) {
+let pluginContext = null;
+
+async function loadUrlIntoIframe(containerEl, iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
 
-  try {
-    const resp = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
+  let loaded = false;
 
-    if (resp.ok) {
-      const htmlText = await resp.text();
-      if (htmlText && htmlText.length > 50) {
-        let finalHtml = htmlText;
-        const baseTag = `<base href="${escapeHtml(url)}" target="_blank">`;
+  // 1. 尝试使用 EdgeEver 官方后台 public network fetch (无 CORS 限制，由 Node.js 主进程拉取)
+  if (pluginContext?.network?.fetch) {
+    try {
+      const controller = new AbortController();
+      const fetchTimer = setTimeout(() => controller.abort(), 8000);
 
-        if (/<head[^>]*>/i.test(finalHtml)) {
-          finalHtml = finalHtml.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
-        } else if (/<html[^>]*>/i.test(finalHtml)) {
-          finalHtml = finalHtml.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
-        } else {
-          finalHtml = `<head>${baseTag}</head>\n` + finalHtml;
+      const resp = await pluginContext.network.fetch(url, {
+        transport: "public",
+        method: "GET",
+        headers: {
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(fetchTimer);
+
+      if (resp && resp.ok) {
+        let htmlText = await resp.text();
+        if (htmlText && htmlText.length > 50) {
+          // 清除页面内自带的 CSP 与 Frame-Options meta 标签，防止阻断内联渲染
+          htmlText = htmlText.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
+          htmlText = htmlText.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
+
+          // 注入 base 标签使相对路径指向原站，并在新窗口打开外部超链接
+          const baseTag = `<base href="${escapeHtml(url)}" target="_blank">`;
+          if (/<head[^>]*>/i.test(htmlText)) {
+            htmlText = htmlText.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
+          } else if (/<html[^>]*>/i.test(htmlText)) {
+            htmlText = htmlText.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
+          } else {
+            htmlText = `<head>${baseTag}</head>\n` + htmlText;
+          }
+
+          iframe.srcdoc = htmlText;
+          loaded = true;
+          if (loadingBar) {
+            setTimeout(() => { loadingBar.style.display = "none"; }, 300);
+          }
+          return;
         }
-
-        iframe.srcdoc = finalHtml;
-        if (loadingBar) {
-          setTimeout(() => { loadingBar.style.display = "none"; }, 400);
-        }
-        return;
       }
+    } catch (err) {
+      console.warn("[Web Companion] context.network.fetch error, fallback to src:", err);
     }
-  } catch (err) {
-    console.warn("[Web Companion] fetch load failed, falling back to standard src:", err);
   }
 
-  // Fallback: 直接赋值 src
+  // 2. Fallback: 使用原生 iframe.src 加载
   iframe.removeAttribute("srcdoc");
   iframe.src = url;
+
   iframe.onload = () => {
+    loaded = true;
     if (loadingBar) loadingBar.style.display = "none";
+    const warnBox = containerEl?.querySelector(".edgeever-web-blocked-notice");
+    if (warnBox) warnBox.remove();
   };
+
+  // 3. 超时或被防嵌拦截保护处理 (针对 GitHub 等强安全或加载慢的网站)
   setTimeout(() => {
     if (loadingBar) loadingBar.style.display = "none";
-  }, 1500);
+    if (!loaded && containerEl) {
+      let notice = containerEl.querySelector(".edgeever-web-blocked-notice");
+      if (!notice) {
+        notice = document.createElement("div");
+        notice.className = "edgeever-web-blocked-notice";
+        notice.style.cssText = "position:absolute;bottom:14px;right:14px;background:rgba(20,23,29,0.94);border:1px solid rgba(56,189,248,0.4);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(0,0,0,0.6);z-index:20;backdrop-filter:blur(6px);";
+        notice.innerHTML = `
+          <span style="font-size:11.5px;color:#cbd5e1;">⚠️ 加载缓慢或受网站防嵌限制？</span>
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="padding:4px 10px;background:#38bdf8;color:#fff;border-radius:4px;font-size:11.5px;font-weight:600;text-decoration:none;">🚀 在浏览器打开</a>
+        `;
+        containerEl.querySelector(".edgeever-web-iframe-container")?.appendChild(notice);
+      }
+    }
+  }, 4000);
 }
 
 // ==================== 4. 构建与挂载卡片 DOM ====================
@@ -389,13 +427,13 @@ function mountWebCompanionCard(container, url) {
 
   // 加载页面
   if (iframe) {
-    loadUrlIntoIframe(iframe, url, loadingBar);
+    loadUrlIntoIframe(card, iframe, url, loadingBar);
   }
 
   // 事件绑定
   reloadBtn.onclick = (e) => {
     e.stopPropagation();
-    if (iframe) loadUrlIntoIframe(iframe, url, loadingBar);
+    if (iframe) loadUrlIntoIframe(card, iframe, url, loadingBar);
   };
 
   copyBtn.onclick = async (e) => {
@@ -542,6 +580,7 @@ function promptInsertWebUrl(onConfirmCallback) {
 
 export default {
   activate(context) {
+    pluginContext = context;
     injectPluginStyles();
 
     // 1. 注册官方原生嵌入渲染器 (Official Plugin Embed Renderer)
