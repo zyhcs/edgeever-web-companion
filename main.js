@@ -1,8 +1,13 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.1.4 - 彻底根除“一闪就没了”：接入 EdgeEver 原生 Plugin Embed 节点体系
+ * v1.1.7 - 官方原生嵌入 + Public Network 穿透引擎
  */
+
+console.log(
+  "%c[EdgeEver Web Companion] Loaded Version: v1.1.7 (Engine: Native Embeds + Public Network)",
+  "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
+);
 
 // 清理历史残留
 if (window.__edgeever_wc_observer) {
@@ -350,11 +355,13 @@ async function loadUrlIntoIframe(containerEl, iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
 
   let loaded = false;
+  console.log("[Web Companion] Start loading URL:", url, "pluginContext.network exists:", !!pluginContext?.network?.fetch);
 
   // 1. 优先通过 EdgeEver 官方后台 Public Network 拉取（无 CORS 限制，Node 环境直达）
   const fetched = await fetchPublicHtml(url);
   if (fetched) {
     let { html, finalUrl } = fetched;
+    console.log("[Web Companion] Successfully fetched HTML via public network for:", finalUrl, "Length:", html.length);
 
     // 清洗目标页面中可能存在的安全限制 meta
     html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
@@ -378,6 +385,8 @@ async function loadUrlIntoIframe(containerEl, iframe, url, loadingBar) {
     }
     return;
   }
+
+  console.warn("[Web Companion] fetchPublicHtml did not return HTML, fallback to native iframe.src for:", url);
 
   // 2. Fallback: 使用原生 iframe.src 加载
   iframe.removeAttribute("srcdoc");
