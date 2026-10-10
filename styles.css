@@ -328,3 +328,27 @@
   background: var(--wc-accent-hover);
   box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
 }
+
+/* ==================== 5. 快速插入悬浮小胶囊 ==================== */
+.edgeever-web-floating-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--wc-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  color: var(--wc-text-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin: 6px 0 10px 0;
+  width: fit-content;
+}
+
+.edgeever-web-floating-trigger:hover {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--wc-accent);
+  border-color: var(--wc-accent);
+}
