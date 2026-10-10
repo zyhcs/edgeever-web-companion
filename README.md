@@ -1,0 +1,56 @@
+# EdgeEver Web Companion (网页伴侣)
+
+> 专为 EdgeEver 打造的无侵入式网页伴侣插件：任意普通笔记一键绑定参考网址，随时在【笔记视图】、【网页视图】与【双屏对照编辑】三大模态间自由穿梭。
+
+---
+
+## ✨ 核心特性
+
+- 🔗 **零侵入赋能任意普通笔记**：无需新增或拦截特殊笔记类型，全库所有已有普通笔记均可随时一键关联网址，解绑后依然保持最纯净的 Markdown/富文本正文。
+- 🌓 **三模态视图智能流转**：
+  - **📝 笔记视图 (Note View)**：100% 回归原生笔记形态，正文纯净舒适，顶部展示极简 Favicon 与网页横幅书签。
+  - **🌐 网页视图 (Web View)**：全屏沉浸式网页浏览，在 EdgeEver 内部直接将当前笔记当成轻量浏览器使用。
+  - **🌓 双屏编辑视图 (Split Edit View)**：经典并排工作台！左侧是原生笔记编辑区，右侧是实时网页视窗，边看边写。
+- 🎯 **每篇笔记独立记忆默认打开视图**：可自由设置某篇笔记下次打开时默认是「笔记视图」、「网页视图」还是「双屏对照」，不同场景因地制宜。
+- 📏 **弹性无级双栏拖拽分屏**：双栏中间配备高质感发光分割条，自由拉伸 20%~80% 宽度比例，双击即可重置为 50:50 平分，并自动持久化该比例。
+- 📋 **网页信息一键摘录到笔记**：右侧网页工具栏提供「摘录到笔记」按钮，快速将该网页标题、链接与摘录时间作为标准 Markdown 块优雅插入笔记光标处。
+- 🛡️ **跨域防嵌安全回退 (Frame Guard)**：针对部分禁止 iframe 嵌套的外部网站（如 GitHub、知乎），提供优雅的防嵌安全卡片，支持一键呼出外部系统浏览器或快速复制链接。
+- 🎨 **Mac 级工艺美学与全主题自适应**：原生适配 One Dark Pro、GitHub Dark、Tokyo Night、GitHub Light 以及系统明暗主题，自带毛玻璃与胶囊控件。
+
+---
+
+## 📁 目录结构
+
+```text
+edgeever-web-companion/
+├── manifest.json   # 插件声明、权限与偏好设置定义
+├── main.js         # 核心插件逻辑（三模态调度、双屏拖拽引擎、Frontmatter 解析）
+├── styles.css       # 现代响应式主题与分屏样式表
+└── README.md
+```
+
+---
+
+## 🚀 分发与安装指南
+
+### 方式一：通过 GitHub 仓库安装（推荐）
+
+1. 在 GitHub 上打开公开仓库：[zyhcs/edgeever-web-companion](https://github.com/zyhcs/edgeever-web-companion)。
+2. 本仓库根目录下已包含 `manifest.json`、`main.js`、`styles.css`。
+3. 创建一个 GitHub Release（Tag 设为 `v1.0.0`），并将 `manifest.json`、`main.js`、`styles.css` 作为附件上传到该 Release。
+4. 打开 EdgeEver，进入「**插件市场**」，在地址栏输入你的 GitHub 仓库地址：
+   ```text
+   https://github.com/zyhcs/edgeever-web-companion
+   ```
+   点击安装即可！
+
+### 方式二：本地开发预览
+
+在 EdgeEver 桌面端中，支持直接读取本地 Extension 文件夹进行实时调试与加载。
+
+---
+
+## ⌨️ 快捷键
+
+- `Alt + W`：快速切换至双屏对照模式 (Split)
+- 更多命令可在命令面板中搜索 `Web Companion`。

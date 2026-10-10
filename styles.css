@@ -1,0 +1,593 @@
+/**
+ * EdgeEver Web Companion (网页伴侣)
+ * 极致纯净、Mac 视效、三模态双屏对照浏览与无侵入网页增强套件
+ */
+
+/* ==================== 1. 全局设计变量与主题适配 ==================== */
+:root {
+  --wc-bg: #1e222b;
+  --wc-pane-bg: #181b21;
+  --wc-border: rgba(255, 255, 255, 0.1);
+  --wc-border-hover: rgba(255, 255, 255, 0.2);
+  --wc-text: #e2e8f0;
+  --wc-text-muted: #94a3b8;
+  --wc-accent: #38bdf8;
+  --wc-accent-rgb: 56, 189, 248;
+  --wc-accent-bg: rgba(56, 189, 248, 0.14);
+  --wc-accent-hover: #0284c7;
+  --wc-active-bg: rgba(255, 255, 255, 0.08);
+  --wc-resizer-color: rgba(255, 255, 255, 0.12);
+  --wc-resizer-active: #38bdf8;
+  --wc-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --wc-radius: 8px;
+}
+
+/* 亮色模式自动适配 */
+[data-theme="light"],
+.theme-light,
+body:not([data-theme="dark"]):not(.theme-dark):not([class*="dark"]) {
+  --wc-bg: #ffffff;
+  --wc-pane-bg: #f8fafc;
+  --wc-border: #e2e8f0;
+  --wc-border-hover: #cbd5e1;
+  --wc-text: #0f172a;
+  --wc-text-muted: #64748b;
+  --wc-accent: #0284c7;
+  --wc-accent-rgb: 2, 132, 199;
+  --wc-accent-bg: rgba(2, 132, 199, 0.1);
+  --wc-accent-hover: #0369a1;
+  --wc-active-bg: rgba(0, 0, 0, 0.06);
+  --wc-resizer-color: #e2e8f0;
+  --wc-resizer-active: #0284c7;
+  --wc-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+/* ==================== 2. 顶部三模态控制台 (Top Navigation Bar) ==================== */
+.edgeever-wc-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--wc-pane-bg);
+  border-bottom: 1px solid var(--wc-border);
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  z-index: 50;
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
+}
+
+.edgeever-wc-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.edgeever-wc-favicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.edgeever-wc-web-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.edgeever-wc-web-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.edgeever-wc-web-url {
+  font-size: 11px;
+  color: var(--wc-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.edgeever-wc-web-url:hover {
+  color: var(--wc-accent);
+  text-decoration: underline;
+}
+
+/* 三模态分段胶囊控制器 (Segmented Control) */
+.edgeever-wc-segmented-control {
+  display: inline-flex;
+  background: var(--wc-active-bg);
+  padding: 3px;
+  border-radius: 9999px;
+  border: 1px solid var(--wc-border);
+  gap: 2px;
+}
+
+.edgeever-wc-segment-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wc-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.edgeever-wc-segment-btn:hover {
+  color: var(--wc-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.edgeever-wc-segment-btn.active {
+  color: #ffffff;
+  background: var(--wc-accent);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(var(--wc-accent-rgb), 0.35);
+}
+
+[data-theme="light"] .edgeever-wc-segment-btn.active,
+body:not([data-theme="dark"]):not(.theme-dark):not([class*="dark"]) .edgeever-wc-segment-btn.active {
+  color: #ffffff;
+  background: var(--wc-accent);
+}
+
+.edgeever-wc-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 默认打开视图选择器 */
+.edgeever-wc-default-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--wc-text-muted);
+}
+
+.edgeever-wc-select {
+  background: var(--wc-active-bg);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.edgeever-wc-select:focus,
+.edgeever-wc-select:hover {
+  border-color: var(--wc-accent);
+}
+
+/* 按钮基础通用样式 */
+.edgeever-wc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edgeever-wc-icon-btn:hover {
+  color: var(--wc-text);
+  background: var(--wc-active-bg);
+  border-color: var(--wc-border);
+}
+
+/* 普通未关联笔记的轻量右上角挂载触发按钮 */
+.edgeever-wc-bind-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wc-text-muted);
+  background: var(--wc-active-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 8px;
+}
+
+.edgeever-wc-bind-trigger:hover {
+  color: var(--wc-accent);
+  border-color: var(--wc-accent);
+  background: var(--wc-accent-bg);
+}
+
+/* ==================== 3. 双屏弹性分屏布局引擎 ==================== */
+.edgeever-wc-split-wrapper {
+  display: flex;
+  width: 100%;
+  height: calc(100vh - 46px);
+  min-height: 500px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 左侧：笔记原生编辑/阅读区 */
+.edgeever-wc-note-pane {
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  transition: flex-basis 0.05s linear;
+  min-width: 260px;
+}
+
+/* 中间：弹性分割拖拽条 (Resizer) */
+.edgeever-wc-resizer {
+  width: 7px;
+  height: 100%;
+  background: var(--wc-resizer-color);
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 40;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.edgeever-wc-resizer:hover,
+.edgeever-wc-resizer.is-dragging {
+  background: var(--wc-resizer-active);
+  box-shadow: 0 0 10px rgba(var(--wc-accent-rgb), 0.5);
+}
+
+/* 居中拖拽圆点手柄指引 */
+.edgeever-wc-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  transition: height 0.15s ease;
+}
+
+.edgeever-wc-resizer:hover::after,
+.edgeever-wc-resizer.is-dragging::after {
+  height: 48px;
+  background: #ffffff;
+}
+
+/* 拖拽期间防止 iframe 捕获鼠标事件 */
+.edgeever-wc-split-wrapper.is-resizing iframe {
+  pointer-events: none !important;
+}
+
+/* 右侧：内嵌网页视窗面板 */
+.edgeever-wc-web-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--wc-pane-bg);
+  border-left: 1px solid var(--wc-border);
+  box-sizing: border-box;
+  overflow: hidden;
+  flex: 1;
+  min-width: 280px;
+}
+
+/* 网页视窗顶部控制工具栏 */
+.edgeever-wc-web-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--wc-bg);
+  border-bottom: 1px solid var(--wc-border);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.edgeever-wc-web-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.edgeever-wc-url-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--wc-active-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: var(--wc-text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edgeever-wc-url-bar input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--wc-text);
+  font-size: 11px;
+  outline: none;
+}
+
+.edgeever-wc-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edgeever-wc-clip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--wc-accent-bg);
+  color: var(--wc-accent);
+  border: 1px solid rgba(var(--wc-accent-rgb), 0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edgeever-wc-clip-btn:hover {
+  background: var(--wc-accent);
+  color: #ffffff;
+}
+
+/* iframe 视窗容器 */
+.edgeever-wc-iframe-wrap {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #ffffff;
+}
+
+.edgeever-wc-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* ==================== 4. 视图模式切换类名控制 ==================== */
+
+/* 1) 笔记视图 (Note Mode): 纯净专注笔记 */
+.edgeever-wc-view-note .edgeever-wc-resizer,
+.edgeever-wc-view-note .edgeever-wc-web-pane {
+  display: none !important;
+}
+.edgeever-wc-view-note .edgeever-wc-note-pane {
+  flex: 1 1 100% !important;
+  max-width: 100% !important;
+}
+
+/* 2) 网页视图 (Web Mode): 全屏浏览网页 */
+.edgeever-wc-view-web .edgeever-wc-note-pane,
+.edgeever-wc-view-web .edgeever-wc-resizer {
+  display: none !important;
+}
+.edgeever-wc-view-web .edgeever-wc-web-pane {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  border-left: none !important;
+}
+
+/* 3) 双屏编辑视图 (Split Mode): 两者并排 */
+.edgeever-wc-view-split .edgeever-wc-resizer,
+.edgeever-wc-view-split .edgeever-wc-web-pane,
+.edgeever-wc-view-split .edgeever-wc-note-pane {
+  display: flex !important;
+}
+
+/* ==================== 5. 跨域防嵌优雅回退卡片 (Frame Guard) ==================== */
+.edgeever-wc-frame-guard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--wc-pane-bg);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+  z-index: 20;
+}
+
+.edgeever-wc-frame-guard.show {
+  display: flex !important;
+}
+
+.edgeever-wc-guard-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--wc-accent);
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+
+.edgeever-wc-guard-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wc-text);
+  margin-bottom: 8px;
+}
+
+.edgeever-wc-guard-desc {
+  font-size: 12px;
+  color: var(--wc-text-muted);
+  max-width: 400px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.edgeever-wc-guard-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.edgeever-wc-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.edgeever-wc-btn-primary {
+  background: var(--wc-accent);
+  color: #ffffff;
+}
+
+.edgeever-wc-btn-primary:hover {
+  background: var(--wc-accent-hover);
+}
+
+.edgeever-wc-btn-secondary {
+  background: var(--wc-active-bg);
+  border-color: var(--wc-border);
+  color: var(--wc-text);
+}
+
+.edgeever-wc-btn-secondary:hover {
+  border-color: var(--wc-border-hover);
+}
+
+/* ==================== 6. 关联网址模态对话框 (URL Modal) ==================== */
+.edgeever-wc-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: wcFadeIn 0.18s ease;
+}
+
+.edgeever-wc-modal {
+  width: 420px;
+  max-width: 90vw;
+  background: var(--wc-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: var(--wc-radius);
+  box-shadow: var(--wc-shadow);
+  padding: 20px;
+  box-sizing: border-box;
+  animation: wcScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.edgeever-wc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.edgeever-wc-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wc-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edgeever-wc-form-group {
+  margin-bottom: 14px;
+}
+
+.edgeever-wc-form-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--wc-text-muted);
+  margin-bottom: 5px;
+}
+
+.edgeever-wc-form-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--wc-pane-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--wc-text);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.edgeever-wc-form-input:focus {
+  border-color: var(--wc-accent);
+  box-shadow: 0 0 0 2px rgba(var(--wc-accent-rgb), 0.2);
+}
+
+.edgeever-wc-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+@keyframes wcFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes wcScaleIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
