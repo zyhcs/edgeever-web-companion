@@ -1,14 +1,14 @@
 /**
  * EdgeEver Web Companion (网页伴侣)
  * /web 网页内嵌与 iframe 沉浸式浏览套件
- * v1.2.0 - 极致极简 Mac 磨砂质感、标题/链接可编辑设置、无外挂干扰纯净版
+ * v1.2.1 - 自适应编辑器全宽 (Editor Breakout) 与自由高度伸缩持久化
  */
 
 :root {
-  --wc-bg: #16181d;
-  --wc-bar-bg: rgba(22, 24, 29, 0.88);
+  --wc-bg: #13161c;
+  --wc-bar-bg: rgba(22, 26, 33, 0.9);
   --wc-border: rgba(255, 255, 255, 0.08);
-  --wc-border-hover: rgba(255, 255, 255, 0.2);
+  --wc-border-hover: rgba(56, 189, 248, 0.25);
   --wc-text: #e2e8f0;
   --wc-text-muted: #94a3b8;
   --wc-accent: #38bdf8;
@@ -17,26 +17,28 @@
 }
 
 /* 内嵌卡片主体容器 */
-.edgeever-web-card {
-  display: block;
-  width: 100%;
-  margin: 16px 0;
-  border-radius: var(--wc-radius);
-  border: 1px solid var(--wc-border);
-  background: var(--wc-bg);
-  box-shadow: 0 8px 30px rgba(0,0,0,0.45);
-  overflow: hidden;
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+.edgeever-web-embed-block {
+  display: block !important;
+  width: 100% !important;
+  margin: 16px 0 !important;
+  border-radius: var(--wc-radius) !important;
+  border: 1px solid var(--wc-border) !important;
+  background: var(--wc-bg) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.15s ease, margin 0.15s ease !important;
+  position: relative !important;
 }
 
-.edgeever-web-card:hover {
-  border-color: var(--wc-border-hover);
+.edgeever-web-embed-block:hover {
+  border-color: var(--wc-border-hover) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45) !important;
 }
 
 /* 沉浸式铺满整页视图 */
-.edgeever-web-card.is-fullscreen-view {
+.edgeever-web-embed-block.is-fullscreen-view {
   position: fixed !important;
   top: 40px !important;
   left: 0 !important;
@@ -49,206 +51,227 @@
   z-index: 9999 !important;
 }
 
+.edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
+  height: calc(100% - 48px) !important;
+  min-height: unset !important;
+}
+
 /* Mac 极简顶栏 */
-.edgeever-web-mac-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 34px;
-  padding: 0 12px;
-  background: var(--wc-bar-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--wc-border);
-  user-select: none;
+.edgeever-web-embed-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  height: 34px !important;
+  padding: 0 10px !important;
+  background: var(--wc-bar-bg) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  gap: 8px !important;
+  user-select: none !important;
+  box-sizing: border-box !important;
 }
 
-.edgeever-web-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+.edgeever-web-embed-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  cursor: pointer !important;
 }
 
-.edgeever-web-dots {
-  display: flex;
-  gap: 5px;
+.edgeever-web-tag {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 1.5px 5px !important;
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: var(--wc-accent) !important;
+  border-radius: 3px !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+  line-height: 1 !important;
 }
 
-.edgeever-web-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  opacity: 0.8;
+.edgeever-web-title-wrap {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  padding: 2px 5px !important;
+  border-radius: 4px !important;
+  transition: background 0.15s ease !important;
 }
 
-.edgeever-web-title-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 320px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
+.edgeever-web-title-wrap:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
-.edgeever-web-title-chip:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.edgeever-web-title-text {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--wc-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.edgeever-web-domain-title {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--wc-text) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 320px !important;
+  line-height: 1.2 !important;
 }
 
 .edgeever-web-edit-hint {
-  font-size: 10px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  font-size: 10.5px !important;
+  color: #64748b !important;
+  opacity: 0 !important;
+  transition: opacity 0.15s ease !important;
 }
 
-.edgeever-web-title-chip:hover .edgeever-web-edit-hint {
-  opacity: 0.8;
+.edgeever-web-title-wrap:hover .edgeever-web-edit-hint {
+  opacity: 1 !important;
+  color: var(--wc-accent) !important;
 }
 
-.edgeever-web-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+.edgeever-web-embed-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
 }
 
-.edgeever-web-tool-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 5px;
-  color: var(--wc-text-muted);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+.edgeever-web-btn-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  height: 24px !important;
+  padding: 0 6px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  color: var(--wc-text-muted) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  text-decoration: none !important;
+  box-sizing: border-box !important;
+  line-height: 1 !important;
 }
 
-.edgeever-web-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
+.edgeever-web-btn-icon:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f1f5f9 !important;
 }
 
-.edgeever-web-tool-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
-  background: #0284c7;
-  color: #fff !important;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.15s ease;
+.edgeever-web-btn-primary {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.25) !important;
+  color: var(--wc-accent) !important;
 }
 
-.edgeever-web-tool-link:hover {
-  background: #0369a1;
-  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
+.edgeever-web-btn-primary:hover {
+  background: var(--wc-accent) !important;
+  border-color: var(--wc-accent) !important;
+  color: #ffffff !important;
 }
 
-/* 视窗容器与双层容灾引导 */
-.edgeever-web-viewport {
-  position: relative;
-  width: 100%;
-  background: #111317;
-  overflow: hidden;
+/* 视窗容器与 iframe */
+.edgeever-web-iframe-container {
+  width: 100% !important;
+  min-height: 320px !important;
+  position: relative !important;
+  background: #101318 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
 
 .edgeever-web-iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-  z-index: 2;
-  background: transparent;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  display: block !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
 }
 
-.edgeever-web-fallback-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle at 50% 30%, #1e2430 0%, #12141a 100%);
-  color: #94a3b8;
-  z-index: 1;
-  padding: 24px;
-  text-align: center;
+/* 底部 Mac 风格拖拽伸缩手柄 */
+.edgeever-web-resize-bar {
+  height: 14px !important;
+  width: 100% !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+  cursor: row-resize !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  transition: all 0.15s ease !important;
+  user-select: none !important;
 }
 
-.edgeever-web-fallback-card {
-  max-width: 480px;
-  padding: 28px 32px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+.edgeever-web-resize-bar:hover,
+.edgeever-web-resize-bar.is-dragging {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-top-color: rgba(56, 189, 248, 0.3) !important;
 }
 
-.edgeever-web-drag-handle {
-  height: 6px;
-  width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  cursor: row-resize;
-  transition: background 0.15s ease;
+.edgeever-web-resize-pill {
+  width: 36px !important;
+  height: 3px !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-radius: 2px !important;
+  transition: all 0.15s ease !important;
 }
 
-.edgeever-web-drag-handle:hover,
-.edgeever-web-drag-handle.is-dragging {
-  background: var(--wc-accent);
+.edgeever-web-resize-bar:hover .edgeever-web-resize-pill,
+.edgeever-web-resize-bar.is-dragging .edgeever-web-resize-pill {
+  background: var(--wc-accent) !important;
+  width: 48px !important;
 }
 
-/* 模态弹窗与设置 */
-.edgeever-web-modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
+.edgeever-web-height-badge {
+  position: absolute !important;
+  right: 12px !important;
+  font-size: 10px !important;
+  color: var(--wc-text-muted) !important;
+  font-family: monospace !important;
+  pointer-events: none !important;
+  opacity: 0;
+  transition: opacity 0.2s ease !important;
 }
 
-.edgeever-web-settings-modal {
-  width: 440px;
-  max-width: 90vw;
-  background: #181b22;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 20px 48px rgba(0,0,0,0.7);
-  padding: 20px;
-  box-sizing: border-box;
-  color: #e2e8f0;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+.edgeever-web-resize-bar:hover .edgeever-web-height-badge,
+.edgeever-web-resize-bar.is-dragging .edgeever-web-height-badge {
+  opacity: 1 !important;
+}
+
+/* 模态弹窗 */
+.edgeever-web-modal-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99999 !important;
+}
+
+.edgeever-web-modal {
+  width: 460px !important;
+  max-width: 92vw !important;
+  background: #14171d !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
+  padding: 18px 20px !important;
+  box-sizing: border-box !important;
+  color: var(--wc-text) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
 }

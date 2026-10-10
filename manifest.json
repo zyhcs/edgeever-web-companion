@@ -2,14 +2,14 @@
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
   "name": "Web Companion: /web 插入网页与 iframe 全尺寸沉浸浏览",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "apiVersion": "2",
   "settingsUi": "host",
-  "description": "Directly type /web to insert an interactive full-size web iframe in your notes. Features customizable title & URL settings, zero-intrusion floating UI, Mac-style frosted glass toolbar, in-browser opening, and fluid height resize.",
+  "description": "Directly type /web to insert an interactive full-size web iframe in your notes. Features auto editor-width adaptation (Breakout), fluid drag height resizing, title & URL settings, and frosted Mac toolbar.",
   "locales": {
     "zh-CN": {
       "name": "网页伴侣 (Web Companion): /web 插入网页与 iframe 沉浸浏览",
-      "description": "优雅极简的网页内嵌套件。纯净无扰设计（无顶部常驻按钮），输入 /web 随心插入全尺寸 iframe 网页视窗。支持点击标题或设置随时修改网页链接与标题名称并持久化保存，配备 Mac 极简磨砂工具栏、沉浸整页铺满、拖拽调节高度与自适应容灾直达。"
+      "description": "优雅极简的网页内嵌套件。自动适应编辑器主区域全宽（突破居中限宽，舒展大视野），支持在卡片底部自由拖拽伸缩高度（防止卡顿并持久化保存），点击标题或设置随时修改链接与标题，配备 Mac 极简磨砂工具栏与自适应容灾直达。"
     }
   },
   "author": "zyhcs",
