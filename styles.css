@@ -420,7 +420,7 @@ html.theme-light,
   width: 100%;
   height: 100%;
   position: relative;
-  background: #ffffff;
+  background: var(--wc-pane-bg);
 }
 
 .edgeever-wc-iframe {

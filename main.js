@@ -1,8 +1,21 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 极致纯净、Mac 视效、三模态双屏对照浏览与无侵入网页增强套件
- * v1.0.2 - 深度修复按钮重复与侧边栏误挂、移除阻断弹窗、优化关联后即时渲染与防嵌支持
+ * v1.0.3 - 终极修复：全局清理单例顶栏、绝对定位自适应排版、消灭大黑块与网页下挤、断开历史 Observer
  */
+
+// 全局单例保护：先断开任何可能遗留的旧 Observer，防止多重实例并发
+if (window.__edgeever_wc_observer) {
+  try {
+    window.__edgeever_wc_observer.disconnect();
+  } catch (_) {}
+  window.__edgeever_wc_observer = null;
+}
+
+// 彻底清除页面中所有可能遗留的旧插件 DOM
+document.querySelectorAll(".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-web-pane, .edgeever-wc-resizer, .edgeever-wc-modal-backdrop").forEach((el) => {
+  try { el.remove(); } catch (_) {}
+});
 
 // ==================== 1. 基础工具与 SVG 图标库 ====================
 
@@ -50,10 +63,10 @@ const ICONS = {
 function extractUrlAndMeta(content, noteId) {
   let url = "";
   let title = "";
-  let defaultView = "split"; // 关联网页后默认推荐双屏对照
+  let defaultView = "split"; // 默认使用双屏视图
   let splitRatio = 50;
 
-  // 1. 本地存储快速恢复 (基于当前 noteId，确保 100% 不受格式丢失影响)
+  // 1. 本地存储快速恢复 (基于当前 noteId)
   if (noteId) {
     try {
       const cached = localStorage.getItem("edgeever_wc_note_" + noteId);
@@ -69,13 +82,13 @@ function extractUrlAndMeta(content, noteId) {
     } catch (_) {}
   }
 
-  // 2. 兜底全局临时关联恢复 (针对刚新建未分配 ID 的笔记)
+  // 2. 兜底全局临时关联恢复
   if (!url) {
     try {
       const tempCached = localStorage.getItem("edgeever_wc_temp_active");
       if (tempCached) {
         const obj = JSON.parse(tempCached);
-        if (obj.url && Date.now() - (obj.time || 0) < 300000) { // 5分钟内有效
+        if (obj.url && Date.now() - (obj.time || 0) < 600000) {
           url = obj.url;
           title = obj.title || "";
           defaultView = obj.defaultView || "split";
@@ -85,10 +98,9 @@ function extractUrlAndMeta(content, noteId) {
     } catch (_) {}
   }
 
-  // 3. 全局宽容度嗅探正文内容（支持纯文本、Markdown、富文本 HTML 标签）
+  // 3. 全局宽容度嗅探正文内容（兼容纯文本、HTML、Markdown）
   const raw = String(content || "");
   if (raw) {
-    // 嗅探 url: "https://..." 或 href="https://..." 或纯链接
     const mUrl = raw.match(/(?:url:\s*["']?|<a\s+[^>]*href=["'])(https?:\/\/[^\s"'<>]+)/i) ||
                  raw.match(/^https?:\/\/[^\s"'<>\)]+/im);
     if (mUrl && mUrl[1]) {
@@ -97,19 +109,16 @@ function extractUrlAndMeta(content, noteId) {
       url = mUrl[0].trim();
     }
 
-    // 嗅探 web_title
     const mTitle = raw.match(/web_title:\s*["']?([^"'\r\n<>]+)["']?/i);
     if (mTitle && mTitle[1]) {
       title = mTitle[1].trim();
     }
 
-    // 嗅探 default_view
     const mView = raw.match(/default_view:\s*["']?(split|web|note)["']?/i);
     if (mView && mView[1]) {
       defaultView = mView[1].toLowerCase();
     }
 
-    // 嗅探 split_ratio
     const mRatio = raw.match(/split_ratio:\s*["']?(\d+)["']?/i);
     if (mRatio && mRatio[1]) {
       splitRatio = Number(mRatio[1]);
@@ -117,34 +126,6 @@ function extractUrlAndMeta(content, noteId) {
   }
 
   return { url, title, defaultView, splitRatio };
-}
-
-function updateMarkdownFrontmatter(content, meta) {
-  const raw = String(content || "");
-  const hasFm = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.test(raw);
-
-  if (!meta.url) {
-    // 解绑：移除开头的 frontmatter
-    return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-  }
-
-  const fmBlock = [
-    "---",
-    `url: "${meta.url}"`,
-    `web_title: "${meta.title || extractDomain(meta.url)}"`,
-    `default_view: "${meta.defaultView || 'split'}"`,
-    `split_ratio: ${meta.splitRatio || 50}`,
-    "---",
-    "",
-  ].join("\n");
-
-  if (hasFm) {
-    return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, fmBlock);
-  } else {
-    // 如果原先没有 Frontmatter，清理前缀杂质
-    const cleanBody = raw.replace(/^(?:url:\s*["']?[^\r\n]+["']?|web_title:\s*[^\r\n]+|default_view:\s*[^\r\n]+)\r?\n?/gim, "").trimStart();
-    return fmBlock + cleanBody;
-  }
 }
 
 // ==================== 3. 插件主体定义 ====================
@@ -199,32 +180,36 @@ export default {
     // ==================== 4. 严苛防侧边栏的主编辑区精准定位 ====================
 
     /**
-     * 严谨查找并锁定右侧主编辑区，坚决排除左侧侧边栏、笔记列表、抽屉和弹窗
+     * 精确锁定右侧主编辑区，无论其处于显示还是隐藏状态，终身标记并锁定唯一实例
      */
     function findMainEditorElement() {
-      // 1. 获取所有 ProseMirror
+      // 1. 优先获取已打标的主编辑器
+      const marked = document.querySelector(".ProseMirror[data-edgeever-main-editor='true']");
+      if (marked && marked.isConnected) {
+        return marked;
+      }
+
+      // 2. 遍历所有 ProseMirror，排除侧边栏
       const allProse = Array.from(document.querySelectorAll(".ProseMirror"));
       const validProse = allProse.filter((el) => {
         if (!el.isConnected) return false;
-        // 绝不属于侧边栏、左侧列表、抽屉、导航
         const inSidebar = el.closest(".sidebar, .aside, .note-list, .memo-list, [class*='sidebar'], [class*='drawer'], [class*='list-container'], nav, aside, .ant-layout-sider");
         if (inSidebar) return false;
-        // 绝不属于我们插件自己的容器
         if (el.closest(".edgeever-wc-web-pane, .edgeever-wc-modal")) return false;
         return true;
       });
 
       if (validProse.length > 0) {
-        // 如果有多个，取 offsetWidth 最大的（主内容编辑区）
-        return validProse.sort((a, b) => b.offsetWidth - a.offsetWidth)[0];
+        const chosen = validProse[0];
+        chosen.dataset.edgeeverMainEditor = "true";
+        return chosen;
       }
 
-      // 2. 兜底通用主编辑器选择器（同样严格过滤侧边栏）
+      // 3. 兜底主内容选择器
       const fallbackSelectors = [
         ".tiptap[contenteditable='true']",
         ".editor-content",
         ".markdown-body",
-        ".memo-content",
         "article",
       ];
 
@@ -236,7 +221,9 @@ export default {
           return !inSidebar && !el.closest(".edgeever-wc-web-pane, .edgeever-wc-modal");
         });
         if (filtered.length > 0) {
-          return filtered.sort((a, b) => b.offsetWidth - a.offsetWidth)[0];
+          const chosen = filtered[0];
+          chosen.dataset.edgeeverMainEditor = "true";
+          return chosen;
         }
       }
 
@@ -294,14 +281,12 @@ export default {
       const merged = { ...currentNoteMeta, ...updatedMeta };
       currentNoteMeta = merged;
 
-      // 1. 存入当前 noteId 的 localStorage 缓存
       if (currentNote?.id) {
         try {
           localStorage.setItem("edgeever_wc_note_" + currentNote.id, JSON.stringify(merged));
         } catch (_) {}
       }
 
-      // 2. 存入全局临时缓存（防止新建笔记未即时生成 id）
       try {
         localStorage.setItem(
           "edgeever_wc_temp_active",
@@ -309,32 +294,25 @@ export default {
         );
       } catch (_) {}
 
-      // 3. 如果环境提供 storage API，一并存入
       if (context.storage?.set && currentNote?.id) {
         try {
           await context.storage.set("edgeever_wc_note_" + currentNote.id, merged);
         } catch (_) {}
       }
-
-      // 4. 存入笔记 Frontmatter
-      if (currentNote?.id && context.notes?.update) {
-        try {
-          const newFullMarkdown = updateMarkdownFrontmatter(currentNote.content, merged);
-          currentNote.content = newFullMarkdown;
-          await context.notes.update(currentNote.id, {
-            contentMarkdown: newFullMarkdown,
-            content: newFullMarkdown,
-          });
-        } catch (err) {
-          console.warn("[Web Companion] 保存笔记元数据失败:", err);
-        }
-      }
     }
 
     // ==================== 6. 单例顶栏与触发按钮管理 ====================
 
+    function enforceSingleTopbar() {
+      const all = Array.from(document.querySelectorAll(".edgeever-wc-topbar"));
+      if (all.length > 1) {
+        for (let i = 1; i < all.length; i++) {
+          all[i].remove();
+        }
+      }
+    }
+
     function cleanupAllTriggers() {
-      // 彻底清理页面所有遗留的关联按钮，防止左侧或主区重复出现
       document.querySelectorAll(".edgeever-wc-bind-trigger").forEach((el) => el.remove());
       bindTriggerEl = null;
     }
@@ -348,6 +326,11 @@ export default {
       if (!contentEl || !contentEl.parentElement) return;
       const parent = contentEl.parentElement;
 
+      // 确保父容器具备相对定位能力
+      if (getComputedStyle(parent).position === "static") {
+        parent.style.position = "relative";
+      }
+
       const hasUrl = Boolean(currentNoteMeta.url);
 
       if (!hasUrl) {
@@ -356,7 +339,6 @@ export default {
         return;
       }
 
-      // 已有关联网址，彻底移除未关联按钮
       cleanupAllTriggers();
 
       if (!settings.showTopSwitchBar) {
@@ -364,12 +346,16 @@ export default {
         return;
       }
 
-      // 确保页面上仅有唯一的 topbar
-      if (!topbarEl || !topbarEl.isConnected) {
-        cleanupAllTopbars();
-        topbarEl = document.createElement("div");
-        topbarEl.className = "edgeever-wc-topbar";
+      // 查杀页面上任何重复的 topbar，确保全局绝对唯一
+      enforceSingleTopbar();
+
+      let tb = document.querySelector(".edgeever-wc-topbar");
+      if (!tb) {
+        tb = document.createElement("div");
+        tb.className = "edgeever-wc-topbar";
+        parent.insertBefore(tb, parent.firstChild);
       }
+      topbarEl = tb;
 
       const domain = extractDomain(currentNoteMeta.url);
       const favicon = getFaviconUrl(currentNoteMeta.url);
@@ -446,14 +432,13 @@ export default {
         };
       }
 
-      // 挂载在主内容元素之前
-      if (topbarEl.nextSibling !== contentEl && topbarEl.parentElement !== parent) {
-        parent.insertBefore(topbarEl, contentEl);
+      // 确保挂载在 parent 内部的最顶端
+      if (topbarEl.parentElement !== parent || topbarEl !== parent.firstChild) {
+        parent.insertBefore(topbarEl, parent.firstChild);
       }
     }
 
     function renderBindTrigger(parent, contentEl) {
-      // 彻底清理全页面可能已存在的所有关联按钮，确保全局绝对唯一
       cleanupAllTriggers();
 
       bindTriggerEl = document.createElement("button");
@@ -469,49 +454,51 @@ export default {
       parent.insertBefore(bindTriggerEl, contentEl);
     }
 
-    // ==================== 7. 网页主视窗与双栏渲染引擎 ====================
+    // ==================== 7. 网页主视窗与双栏绝对定位排版引擎 ====================
 
     function renderMainViews(contentEl) {
       if (!contentEl || !contentEl.parentElement) return;
       const parent = contentEl.parentElement;
 
+      // 确保父容器具备相对定位和限制溢出能力
+      parent.style.position = "relative";
+      parent.style.minHeight = "calc(100vh - 150px)";
+
       const hasUrl = Boolean(currentNoteMeta.url);
       if (!hasUrl) {
-        // 无关联 URL，恢复纯净原生编辑
         contentEl.style.display = "";
-        contentEl.style.flex = "";
-        contentEl.style.maxWidth = "";
         contentEl.style.width = "";
+        contentEl.style.maxWidth = "";
+        contentEl.style.height = "";
         if (webPaneEl) webPaneEl.style.display = "none";
         if (resizerEl) resizerEl.style.display = "none";
         return;
       }
 
-      // 1. 确保右侧网页面板挂载在 contentEl 的同级后方
-      if (!webPaneEl || !webPaneEl.isConnected) {
-        webPaneEl = document.createElement("div");
-        webPaneEl.className = "edgeever-wc-web-pane";
+      // 确保右侧网页面板单例存在
+      let wp = parent.querySelector(".edgeever-wc-web-pane");
+      if (!wp) {
+        wp = document.createElement("div");
+        wp.className = "edgeever-wc-web-pane";
+        parent.appendChild(wp);
+      }
+      webPaneEl = wp;
 
-        // 创建分割拖拽条
-        resizerEl = document.createElement("div");
-        resizerEl.className = "edgeever-wc-resizer";
-        resizerEl.title = "拖拽调节左右分屏比例 (双击重置为 50:50)";
-
-        if (contentEl.nextSibling) {
-          parent.insertBefore(resizerEl, contentEl.nextSibling);
-          parent.insertBefore(webPaneEl, resizerEl.nextSibling);
-        } else {
-          parent.appendChild(resizerEl);
-          parent.appendChild(webPaneEl);
-        }
-
+      // 确保拖拽分割线单例存在
+      let rz = parent.querySelector(".edgeever-wc-resizer");
+      if (!rz) {
+        rz = document.createElement("div");
+        rz.className = "edgeever-wc-resizer";
+        rz.title = "拖拽调节左右分屏比例 (双击重置为 50:50)";
+        parent.appendChild(rz);
         initResizerEvents(contentEl, parent);
       }
+      resizerEl = rz;
 
-      // 2. 渲染网页面板内部控件与 iframe
+      // 渲染网页面板内部控件与 iframe
       buildWebPaneContent();
 
-      // 3. 应用三种视图的布局排版
+      // 应用三种视图的布局排版（采用绝对定位无缝贴合）
       applyViewModeLayout(contentEl, parent);
     }
 
@@ -519,12 +506,9 @@ export default {
       if (!webPaneEl) return;
       const url = currentNoteMeta.url;
 
-      // 如果已有 iframe 且网址未变，复用已有内容，避免重载
       if (iframeEl && iframeEl.dataset.loadedUrl === url) {
         return;
       }
-
-      const domain = extractDomain(url);
 
       webPaneEl.innerHTML = `
         <div class="edgeever-wc-web-toolbar">
@@ -559,7 +543,7 @@ export default {
         <div class="edgeever-wc-iframe-wrap">
           <iframe class="edgeever-wc-iframe" src="${escapeHtml(url)}" data-loaded-url="${escapeHtml(url)}" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
           <div class="edgeever-wc-csp-hint">
-            <span>${ICONS.shield} 若因站点安全保护限制 (CSP) 未显示页面，可点击上方「在浏览器打开」</span>
+            <span>${ICONS.shield} 若因站点安全保护限制 (CSP) 未显示页面，可点击左上方「在浏览器打开」</span>
           </div>
         </div>
       `;
@@ -611,56 +595,76 @@ export default {
       }
     }
 
+    /**
+     * 核心布局切换算法：
+     * 采用绝对定位铺满模式，杜绝被兄弟元素挤到屏幕下方，杜绝大黑块
+     */
     function applyViewModeLayout(contentEl, parent) {
       if (!contentEl || !webPaneEl) return;
 
+      const topOffset = topbarEl && topbarEl.offsetHeight ? (topbarEl.offsetHeight + 10) : 48;
+
       if (activeViewMode === "note") {
         // 1) 笔记视图：纯净笔记
-        parent.style.display = "";
-        parent.style.flexDirection = "";
         contentEl.style.display = "";
-        contentEl.style.flex = "";
-        contentEl.style.maxWidth = "";
         contentEl.style.width = "";
+        contentEl.style.maxWidth = "";
+        contentEl.style.height = "";
+        contentEl.style.position = "";
+        contentEl.style.overflowY = "";
+
         webPaneEl.style.display = "none";
         if (resizerEl) resizerEl.style.display = "none";
       } else if (activeViewMode === "web") {
-        // 2) 网页视图：全屏显示网页，隐藏笔记正文
-        parent.style.display = "flex";
-        parent.style.flexDirection = "column";
+        // 2) 网页视图：全屏绝对定位覆盖，网页面板撑满编辑区，消除任何中间黑块
         contentEl.style.display = "none";
         if (resizerEl) resizerEl.style.display = "none";
 
         webPaneEl.style.display = "flex";
-        webPaneEl.style.flex = "1";
+        webPaneEl.style.position = "absolute";
+        webPaneEl.style.top = topOffset + "px";
+        webPaneEl.style.left = "0";
+        webPaneEl.style.right = "0";
+        webPaneEl.style.bottom = "0";
         webPaneEl.style.width = "100%";
-        webPaneEl.style.height = "calc(100vh - 140px)";
-        webPaneEl.style.minHeight = "480px";
+        webPaneEl.style.height = `calc(100% - ${topOffset}px)`;
+        webPaneEl.style.zIndex = "15";
         webPaneEl.style.borderLeft = "none";
+        webPaneEl.style.borderRadius = "var(--wc-radius)";
       } else if (activeViewMode === "split") {
         // 3) 双屏对照模式：左侧笔记 + 右侧网页
-        parent.style.display = "flex";
-        parent.style.flexDirection = "row";
-        parent.style.alignItems = "stretch";
-        parent.style.boxSizing = "border-box";
-
         const ratio = currentSplitRatio || 50;
 
-        contentEl.style.display = "";
-        contentEl.style.flex = `0 0 ${ratio}%`;
-        contentEl.style.maxWidth = `${ratio}%`;
+        contentEl.style.display = "block";
         contentEl.style.width = `${ratio}%`;
-        contentEl.style.boxSizing = "border-box";
+        contentEl.style.maxWidth = `${ratio}%`;
+        contentEl.style.height = `calc(100% - ${topOffset}px)`;
+        contentEl.style.position = "";
         contentEl.style.overflowY = "auto";
+        contentEl.style.boxSizing = "border-box";
+        contentEl.style.paddingRight = "12px";
 
-        if (resizerEl) resizerEl.style.display = "block";
+        if (resizerEl) {
+          resizerEl.style.display = "block";
+          resizerEl.style.position = "absolute";
+          resizerEl.style.left = `${ratio}%`;
+          resizerEl.style.top = `${topOffset}px`;
+          resizerEl.style.bottom = "0";
+          resizerEl.style.width = "6px";
+          resizerEl.style.zIndex = "25";
+        }
 
         webPaneEl.style.display = "flex";
-        webPaneEl.style.flex = "1";
-        webPaneEl.style.width = `calc(${100 - ratio}% - 8px)`;
-        webPaneEl.style.height = "calc(100vh - 140px)";
-        webPaneEl.style.minHeight = "480px";
+        webPaneEl.style.position = "absolute";
+        webPaneEl.style.left = `calc(${ratio}% + 6px)`;
+        webPaneEl.style.right = "0";
+        webPaneEl.style.top = `${topOffset}px`;
+        webPaneEl.style.bottom = "0";
+        webPaneEl.style.width = `calc(${100 - ratio}% - 6px)`;
+        webPaneEl.style.height = `calc(100% - ${topOffset}px)`;
+        webPaneEl.style.zIndex = "15";
         webPaneEl.style.borderLeft = "1px solid var(--wc-border)";
+        webPaneEl.style.borderRadius = "var(--wc-radius)";
       }
     }
 
@@ -669,7 +673,6 @@ export default {
 
       let isDragging = false;
       let startX = 0;
-      let startNoteWidth = 0;
       let containerWidth = 0;
 
       resizerEl.ondblclick = (e) => {
@@ -683,19 +686,17 @@ export default {
         e.preventDefault();
         isDragging = true;
         startX = e.clientX;
-        startNoteWidth = contentEl.getBoundingClientRect().width;
         containerWidth = parent.getBoundingClientRect().width;
 
         resizerEl.classList.add("is-dragging");
 
-        // 防止拖拽中 iframe 截获 mousemove
         if (iframeEl) iframeEl.style.pointerEvents = "none";
 
         const onMouseMove = (moveEvt) => {
           if (!isDragging || containerWidth <= 0) return;
-          const deltaX = moveEvt.clientX - startX;
-          let newWidth = startNoteWidth + deltaX;
-          let newPercent = (newWidth / containerWidth) * 100;
+          const parentRect = parent.getBoundingClientRect();
+          const relativeX = moveEvt.clientX - parentRect.left;
+          let newPercent = (relativeX / containerWidth) * 100;
           newPercent = Math.max(20, Math.min(80, newPercent)); // 限制在 20% ~ 80%
 
           currentSplitRatio = Math.round(newPercent);
@@ -776,7 +777,6 @@ export default {
       let initialTitle = currentNoteMeta.title || "";
       let initialDefaultView = currentNoteMeta.defaultView || settings.defaultViewMode || "split";
 
-      // 自动感知剪贴板
       if (!initialUrl && navigator.clipboard?.readText) {
         try {
           const clipText = await navigator.clipboard.readText();
@@ -857,7 +857,7 @@ export default {
         if (e.target === modalEl) doClose();
       };
 
-      // 保存绑定（无阻断式弹窗，直接平滑生效）
+      // 保存绑定（零阻断弹窗，即时生效）
       confirmBtn.onclick = async () => {
         let enteredUrl = (urlInput.value || "").trim();
         if (!enteredUrl) {
@@ -884,7 +884,6 @@ export default {
 
         doClose();
 
-        // 立即切换并强制渲染
         activeViewMode = selectedView;
         const contentEl = findMainEditorElement();
         if (contentEl) {
@@ -932,10 +931,8 @@ export default {
         const isNoteChanged = !currentNote || currentNote.id !== note.id;
         currentNote = note;
 
-        // 全面嗅探 URL
         const parsed = extractUrlAndMeta(note.content, note.id);
 
-        // 如果内存中刚主动关联了 url，且嗅探为空，保留内存状态防冲掉
         if (!parsed.url && currentNoteMeta.url) {
           parsed.url = currentNoteMeta.url;
           parsed.title = currentNoteMeta.title;
@@ -949,7 +946,6 @@ export default {
           splitRatio: parsed.splitRatio || Number(settings.defaultSplitRatio) || 50,
         };
 
-        // 如果切换了笔记，按该笔记配置的默认视图初始化
         if (isNoteChanged) {
           activeViewMode = currentNoteMeta.url ? currentNoteMeta.defaultView : "note";
           currentSplitRatio = currentNoteMeta.splitRatio;
@@ -965,7 +961,6 @@ export default {
       }
     }
 
-    // 智能监听 DOM 变动（避免自身死循环）
     let debounceTimer = null;
     const observer = new MutationObserver((mutations) => {
       if (isInternalMutating) return;
@@ -990,9 +985,9 @@ export default {
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
+    window.__edgeever_wc_observer = observer;
 
-    // 初始挂载
-    setTimeout(refreshComponentState, 400);
+    setTimeout(refreshComponentState, 350);
 
     // ==================== 11. 快捷命令注册 ====================
 
@@ -1024,7 +1019,6 @@ export default {
       });
     }
 
-    // 设置变更监听
     if (context.events?.on) {
       context.events.on("settings.changed", async () => {
         await loadSettings();
@@ -1034,16 +1028,24 @@ export default {
   },
 
   deactivate() {
+    if (window.__edgeever_wc_observer) {
+      try {
+        window.__edgeever_wc_observer.disconnect();
+      } catch (_) {}
+      window.__edgeever_wc_observer = null;
+    }
     document.querySelectorAll(".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-modal-backdrop, .edgeever-wc-web-pane, .edgeever-wc-resizer").forEach((el) => el.remove());
     const content = document.querySelector(".ProseMirror, .tiptap, .editor-content");
     if (content) {
       content.style.display = "";
-      content.style.flex = "";
-      content.style.maxWidth = "";
       content.style.width = "";
+      content.style.maxWidth = "";
+      content.style.height = "";
+      content.style.position = "";
+      content.style.overflowY = "";
       if (content.parentElement) {
-        content.parentElement.style.display = "";
-        content.parentElement.style.flexDirection = "";
+        content.parentElement.style.position = "";
+        content.parentElement.style.minHeight = "";
       }
     }
   },
