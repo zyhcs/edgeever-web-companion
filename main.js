@@ -144,7 +144,7 @@ const INJECTED_CSS = `
   height: 100% !important;
   border: none !important;
   display: block !important;
-  background: #ffffff !important;
+  background: transparent !important;
   box-sizing: border-box !important;
 }
 
@@ -445,9 +445,32 @@ function mountWebCompanionCard(container, url) {
         <button type="button" class="edgeever-web-action-btn edgeever-web-btn-full" style="padding:4px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;" title="铺满整页切换">⛶ 铺满笔记</button>
       </div>
     </div>
-    <div class="edgeever-web-iframe-container" style="width:100%;height:calc(100vh - 220px);min-height:580px;position:relative;background:#14171d;">
+    <div class="edgeever-web-iframe-container" style="width:100%;height:calc(100vh - 220px);min-height:580px;position:relative;background:#14171d;overflow:hidden;">
       <div class="edgeever-web-loading-bar"></div>
-      <iframe class="edgeever-web-iframe" style="width:100%;height:100%;border:none;background:#ffffff;" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
+      
+      <!-- 底层自适应引导面板 (当外部站点开启CSP防嵌导致内联空白时优雅呈现) -->
+      <div class="edgeever-web-fallback-pane" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:#14171d;color:#e2e8f0;z-index:1;box-sizing:border-box;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(56,189,248,0.14);border:1px solid rgba(56,189,248,0.3);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;">
+          🌐
+        </div>
+        <div style="font-size:16px;font-weight:700;color:#f8fafc;margin-bottom:6px;">
+          ${escapeHtml(domain)}
+        </div>
+        <div style="font-size:12px;color:#94a3b8;max-width:440px;line-height:1.6;margin-bottom:20px;">
+          若此站点开启了安全防嵌策略 (CSP: frame-ancestors 'none') 导致无法内联展示，可一键在系统独立浏览器中畅快浏览：
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(56,189,248,0.35);">
+            🚀 立即在浏览器打开
+          </a>
+          <button type="button" class="edgeever-web-action-btn edgeever-web-fallback-copy" style="padding:8px 16px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#cbd5e1;font-size:12.5px;cursor:pointer;">
+            📋 复制网址
+          </button>
+        </div>
+      </div>
+
+      <!-- 顶层透明 iframe (支持内嵌的网站直接正常覆盖显示) -->
+      <iframe class="edgeever-web-iframe" style="position:relative;width:100%;height:100%;border:none;background:transparent;z-index:2;" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
     </div>
     <div class="edgeever-web-resize-bar" style="height:7px;width:100%;background:rgba(255,255,255,0.05);cursor:row-resize;" title="向下拖拽调节网页显示高度"></div>
   `;
@@ -480,6 +503,19 @@ function mountWebCompanionCard(container, url) {
       setTimeout(() => { copyBtn.textContent = originText; }, 1500);
     } catch (_) {}
   };
+
+  const fallbackCopyBtn = card.querySelector(".edgeever-web-fallback-copy");
+  if (fallbackCopyBtn) {
+    fallbackCopyBtn.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(url);
+        const originText = fallbackCopyBtn.textContent;
+        fallbackCopyBtn.textContent = "✅ 已复制";
+        setTimeout(() => { fallbackCopyBtn.textContent = originText; }, 1500);
+      } catch (_) {}
+    };
+  }
 
   fullBtn.onclick = (e) => {
     e.stopPropagation();
