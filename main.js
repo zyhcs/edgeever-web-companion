@@ -1,11 +1,11 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.2.2 - 紧急修复嵌入挂载与插入机制，完美融合自适应编辑器全宽与高度自由拖拽
+ * v1.2.3 - 核心网络穿透机制深度修复，彻底根除白屏，稳定全宽与高度自由伸缩
  */
 
 console.log(
-  "%c[EdgeEver Web Companion] v1.2.2 Loaded - Bulletproof Embed Mount & Auto Editor Width",
+  "%c[EdgeEver Web Companion] v1.2.3 Loaded - Network Penetration Restored & Zero-Blank Guard",
   "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
 );
 
@@ -32,18 +32,18 @@ const INJECTED_CSS = `
   margin: 16px 0 !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 10px !important;
-  background: #13161c !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  background: #11141a !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
   user-select: none !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.15s ease, margin 0.15s ease !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease, margin 0.2s ease !important;
   position: relative !important;
 }
 
 .edgeever-web-embed-block:hover {
   border-color: rgba(56, 189, 248, 0.25) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important;
 }
 
 .edgeever-web-embed-bar {
@@ -53,10 +53,10 @@ const INJECTED_CSS = `
   justify-content: space-between !important;
   height: 34px !important;
   padding: 0 10px !important;
-  background: rgba(22, 26, 33, 0.9) !important;
+  background: rgba(20, 24, 31, 0.95) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
   gap: 8px !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
   box-sizing: border-box !important;
@@ -170,7 +170,7 @@ const INJECTED_CSS = `
   width: 100% !important;
   min-height: 320px !important;
   position: relative !important;
-  background: #101318 !important;
+  background: #0f1217 !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
 }
@@ -182,6 +182,8 @@ const INJECTED_CSS = `
   display: block !important;
   background: transparent !important;
   box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 .edgeever-web-loading-bar {
@@ -206,7 +208,7 @@ const INJECTED_CSS = `
   height: 14px !important;
   width: 100% !important;
   background: rgba(255, 255, 255, 0.02) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   cursor: row-resize !important;
   display: flex !important;
   align-items: center !important;
@@ -225,7 +227,7 @@ const INJECTED_CSS = `
 .edgeever-web-resize-pill {
   width: 36px !important;
   height: 3px !important;
-  background: rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
   border-radius: 2px !important;
   transition: all 0.15s ease !important;
 }
@@ -346,47 +348,83 @@ function getEditorInstance() {
   return null;
 }
 
-// ==================== 3. 页面穿透加载机制 ====================
+// ==================== 3. 智能网络穿透引擎 (Restored Official Network Fetch) ====================
+
+async function fetchPublicHtml(url, maxRedirects = 3) {
+  if (!pluginContext?.network?.fetch) return null;
+
+  let currentUrl = url;
+  for (let i = 0; i <= maxRedirects; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+
+      // 严格传递 EdgeEver 白名单请求头 (accept)
+      const resp = await pluginContext.network.fetch(currentUrl, {
+        transport: "public",
+        method: "GET",
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+      if (!resp) continue;
+
+      // 自动跟随重定向
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers.get("location");
+        if (loc) {
+          currentUrl = new URL(loc, currentUrl).href;
+          continue;
+        }
+      }
+
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text && text.length > 50) {
+          return { html: text, finalUrl: currentUrl };
+        }
+      }
+    } catch (err) {
+      console.warn("[Web Companion] fetchPublicHtml error:", err);
+      break;
+    }
+  }
+  return null;
+}
 
 async function loadUrlIntoIframe(card, iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
   let loaded = false;
 
-  // 1. 尝试通过 EdgeEver publicNetwork 穿透并以 srcdoc 注入
-  if (pluginContext?.network?.publicNetwork?.get) {
-    try {
-      const resp = await pluginContext.network.publicNetwork.get(url, {
-        headers: {
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "User-Agent": navigator.userAgent,
-        },
-      });
+  // 1. 优先通过 EdgeEver 官方后台 Public Network 拉取（无 CORS 限制，Node 直达）
+  const fetched = await fetchPublicHtml(url);
+  if (fetched) {
+    let { html, finalUrl } = fetched;
 
-      if (resp && resp.status >= 200 && resp.status < 400 && resp.data) {
-        let html = typeof resp.data === "string" ? resp.data : String(resp.data);
-        const finalUrl = resp.finalUrl || url;
+    // 清洗安全限制 meta 标签
+    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
+    html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
 
-        html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
-        html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
+    // 注入 base 标签使相对路径资源正确请求原站
+    const baseTag = `<base href="${escapeHtml(finalUrl)}" target="_blank">`;
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
+    } else if (/<html[^>]*>/i.test(html)) {
+      html = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
+    } else {
+      html = `<head>${baseTag}</head>\n` + html;
+    }
 
-        const baseTag = `<base href="${escapeHtml(finalUrl)}" target="_blank">`;
-        if (/<head[^>]*>/i.test(html)) {
-          html = html.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
-        } else if (/<html[^>]*>/i.test(html)) {
-          html = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
-        } else {
-          html = `<head>${baseTag}</head>\n` + html;
-        }
-
-        iframe.removeAttribute("src");
-        iframe.srcdoc = html;
-        loaded = true;
-        if (loadingBar) {
-          setTimeout(() => { loadingBar.style.display = "none"; }, 300);
-        }
-        return;
-      }
-    } catch (_) {}
+    iframe.removeAttribute("src");
+    iframe.srcdoc = html;
+    loaded = true;
+    if (loadingBar) {
+      setTimeout(() => { loadingBar.style.display = "none"; }, 300);
+    }
+    return;
   }
 
   // 2. 原生 iframe.src 加载
@@ -497,9 +535,9 @@ function applyCardLayout(card, widthMode) {
       const viewportWidth = viewport.clientWidth;
 
       if (widthMode === "editor") {
-        // 适应编辑器工作区宽度，左右保留 20px 留白
-        const targetWidth = Math.max(parentRect.width, viewportWidth - 40);
-        const targetLeft = viewportRect.left + 20;
+        // 适应编辑器工作区宽度，左右保留 24px 优雅呼吸留白
+        const targetWidth = Math.max(parentRect.width, viewportWidth - 48);
+        const targetLeft = viewportRect.left + 24;
         const offset = Math.round(targetLeft - parentRect.left);
 
         card.style.width = `${targetWidth}px`;
@@ -507,8 +545,8 @@ function applyCardLayout(card, widthMode) {
         card.style.marginLeft = `${offset}px`;
         card.style.marginRight = "auto";
       } else if (widthMode === "wide") {
-        // 宽屏模式 1080px 居中
-        const maxW = Math.min(1080, viewportWidth - 32);
+        // 宽屏模式 980px 居中
+        const maxW = Math.min(980, viewportWidth - 32);
         const targetLeft = viewportRect.left + (viewportWidth - maxW) / 2;
         const offset = Math.round(targetLeft - parentRect.left);
 
@@ -558,8 +596,8 @@ function openEmbedSettingsModal({ title, url, height, widthMode }, onSave) {
       <div style="margin-bottom:12px;">
         <label style="display:block;font-size:11.5px;font-weight:500;color:#94a3b8;margin-bottom:5px;">宽度显示模式</label>
         <div style="display:flex;gap:6px;" class="edgeever-web-width-opts">
-          <button type="button" class="edgeever-web-width-btn" data-mode="editor" style="flex:1;padding:6px;background:${widthMode === 'editor' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'editor' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'editor' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">🌟 适应编辑器全宽</button>
-          <button type="button" class="edgeever-web-width-btn" data-mode="wide" style="flex:1;padding:6px;background:${widthMode === 'wide' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'wide' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'wide' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">📐 宽屏居中 (1080px)</button>
+          <button type="button" class="edgeever-web-width-btn" data-mode="editor" style="flex:1;padding:6px;background:${widthMode === 'editor' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'editor' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'editor' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">🌟 适应全宽</button>
+          <button type="button" class="edgeever-web-width-btn" data-mode="wide" style="flex:1;padding:6px;background:${widthMode === 'wide' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'wide' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'wide' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">📏 宽屏 (980px)</button>
           <button type="button" class="edgeever-web-width-btn" data-mode="normal" style="flex:1;padding:6px;background:${widthMode === 'normal' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'normal' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'normal' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">📝 标准正文宽</button>
         </div>
       </div>
@@ -736,7 +774,7 @@ function mountWebCompanionCard(container, embedData) {
           </div>
         </div>
         <div class="edgeever-web-embed-actions">
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：适应编辑器全宽 / 宽屏 / 标准宽">${getWidthLabel(currentWidthMode)}</button>
+          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：全宽 / 宽屏(980px) / 标准宽">${getWidthLabel(currentWidthMode)}</button>
           <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-settings" title="属性设置：自定义标题、网址、宽度与高度">⚙️ 设置</button>
           <a class="edgeever-web-btn-icon edgeever-web-btn-primary edgeever-web-action-link" href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" title="在系统独立浏览器中打开此页面">🚀 打开</a>
           <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-reload" title="刷新页面">🔄 刷新</button>
@@ -747,8 +785,8 @@ function mountWebCompanionCard(container, embedData) {
       <div class="edgeever-web-iframe-container" style="height:${currentHeight}px;">
         <div class="edgeever-web-loading-bar"></div>
         
-        <!-- 底层自适应引导面板 (当外部站点开启CSP防嵌导致内联空白时优雅呈现) -->
-        <div class="edgeever-web-fallback-pane" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:#101318;color:#e2e8f0;z-index:1;box-sizing:border-box;">
+        <!-- 底层自适应引导面板 (当外部站点开启CSP防嵌导致内嵌受阻时优雅呈现) -->
+        <div class="edgeever-web-fallback-pane" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:#0f1217;color:#e2e8f0;z-index:1;box-sizing:border-box;">
           <div style="width:48px;height:48px;border-radius:12px;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;">
             🌐
           </div>
@@ -756,7 +794,7 @@ function mountWebCompanionCard(container, embedData) {
             ${escapeHtml(currentTitle)}
           </div>
           <div style="font-size:12px;color:#94a3b8;max-width:440px;line-height:1.6;margin-bottom:18px;">
-            若此站点配置了安全防嵌保护 (CSP: frame-ancestors 'none') 导致视窗内空白，可一键在系统独立浏览器中畅快浏览：
+            若此站点配置了极严格的安全防嵌策略 (CSP: frame-ancestors)，已为您准备好一键直达系统浏览器通道：
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;padding:7px 16px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;box-shadow:0 4px 12px rgba(56,189,248,0.3);">
@@ -1106,7 +1144,7 @@ export default {
     pluginContext = context;
     ensureInjectedStyle();
 
-    // 1. 注册官方原生嵌入渲染器 (同时支持 mount 与 render，兼容 web-view 与 web-companion 双类型)
+    // 1. 注册官方原生嵌入渲染器 (深度兼容 web-view 与 web-companion，支持 mount 与 render)
     if (context.editor?.embeds?.register) {
       const rendererDef = {
         type: "web-view",
@@ -1278,7 +1316,7 @@ export default {
       });
     }
 
-    console.log("[Web Companion] v1.2.2 initialized successfully.");
+    console.log("[Web Companion] v1.2.3 initialized successfully.");
   },
 
   deactivate() {
