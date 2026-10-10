@@ -2,7 +2,7 @@
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
   "name": "Web Companion: 网页伴侣与双屏对照浏览",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "apiVersion": "2",
   "settingsUi": "host",
   "description": "Seamless in-note web browsing suite for EdgeEver: Bind URLs to any note, switch smoothly among Note View, Fullscreen Web View, and Split Edit View, drag-to-resize split panes, customize default opening views, and clip web excerpts with one click.",

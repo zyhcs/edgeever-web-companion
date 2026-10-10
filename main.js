@@ -1,7 +1,7 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 极致纯净、Mac 视效、三模态双屏对照浏览与无侵入网页增强套件
- * v1.0.1 - 深度修复主题暗黑配色、精准挂载位置与网页渲染
+ * v1.0.2 - 深度修复按钮重复与侧边栏误挂、移除阻断弹窗、优化关联后即时渲染与防嵌支持
  */
 
 // ==================== 1. 基础工具与 SVG 图标库 ====================
@@ -40,8 +40,9 @@ const ICONS = {
   refresh: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
   external: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
   clip: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>`,
+  copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
   close: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-  shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
+  shield: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
 };
 
 // ==================== 2. 全面稳健的 URL 与元数据嗅探 ====================
@@ -49,7 +50,7 @@ const ICONS = {
 function extractUrlAndMeta(content, noteId) {
   let url = "";
   let title = "";
-  let defaultView = "note";
+  let defaultView = "split"; // 关联网页后默认推荐双屏对照
   let splitRatio = 50;
 
   // 1. 本地存储快速恢复 (基于当前 noteId，确保 100% 不受格式丢失影响)
@@ -61,56 +62,57 @@ function extractUrlAndMeta(content, noteId) {
         if (obj.url) {
           url = obj.url;
           title = obj.title || "";
-          defaultView = obj.defaultView || "note";
+          defaultView = obj.defaultView || "split";
           splitRatio = Number(obj.splitRatio) || 50;
         }
       }
     } catch (_) {}
   }
 
+  // 2. 兜底全局临时关联恢复 (针对刚新建未分配 ID 的笔记)
+  if (!url) {
+    try {
+      const tempCached = localStorage.getItem("edgeever_wc_temp_active");
+      if (tempCached) {
+        const obj = JSON.parse(tempCached);
+        if (obj.url && Date.now() - (obj.time || 0) < 300000) { // 5分钟内有效
+          url = obj.url;
+          title = obj.title || "";
+          defaultView = obj.defaultView || "split";
+          splitRatio = Number(obj.splitRatio) || 50;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. 全局宽容度嗅探正文内容（支持纯文本、Markdown、富文本 HTML 标签）
   const raw = String(content || "");
-
-  // 2. 逐行嗅探 YAML Frontmatter 或文本行首定义的属性
-  const lines = raw.split(/\r?\n/).slice(0, 30);
-  for (const line of lines) {
-    const trim = line.trim();
-
-    // url: "https://..." 或 url: https://...
-    const mUrl = trim.match(/^url:\s*["']?(https?:\/\/[^\s"']+)["']?/i);
+  if (raw) {
+    // 嗅探 url: "https://..." 或 href="https://..." 或纯链接
+    const mUrl = raw.match(/(?:url:\s*["']?|<a\s+[^>]*href=["'])(https?:\/\/[^\s"'<>]+)/i) ||
+                 raw.match(/^https?:\/\/[^\s"'<>\)]+/im);
     if (mUrl && mUrl[1]) {
       url = mUrl[1].trim();
+    } else if (mUrl && mUrl[0] && !url) {
+      url = mUrl[0].trim();
     }
 
-    // web_title: "xxx" 或 web_title: xxx
-    const mTitle = trim.match(/^web_title:\s*["']?([^"'\r\n]+)["']?/i);
+    // 嗅探 web_title
+    const mTitle = raw.match(/web_title:\s*["']?([^"'\r\n<>]+)["']?/i);
     if (mTitle && mTitle[1]) {
       title = mTitle[1].trim();
     }
 
-    // default_view: web | split | note
-    const mView = trim.match(/^default_view:\s*["']?(note|web|split)["']?/i);
+    // 嗅探 default_view
+    const mView = raw.match(/default_view:\s*["']?(split|web|note)["']?/i);
     if (mView && mView[1]) {
       defaultView = mView[1].toLowerCase();
     }
 
-    // split_ratio: 50
-    const mRatio = trim.match(/^split_ratio:\s*["']?(\d+)["']?/i);
+    // 嗅探 split_ratio
+    const mRatio = raw.match(/split_ratio:\s*["']?(\d+)["']?/i);
     if (mRatio && mRatio[1]) {
       splitRatio = Number(mRatio[1]);
-    }
-  }
-
-  // 3. 兜底：如果未明确 url: 但正文开头包含独立链接
-  if (!url) {
-    for (const line of lines) {
-      const linkMatch = line.trim().match(/^(?:\[[^\]]*\]\()?https?:\/\/[^\s\)\"\'>]+/i);
-      if (linkMatch && linkMatch[0]) {
-        const clean = linkMatch[0].replace(/^\[[^\]]*\]\(/, "").replace(/\)$/, "").trim();
-        if (/^https?:\/\//i.test(clean)) {
-          url = clean;
-          break;
-        }
-      }
     }
   }
 
@@ -130,7 +132,7 @@ function updateMarkdownFrontmatter(content, meta) {
     "---",
     `url: "${meta.url}"`,
     `web_title: "${meta.title || extractDomain(meta.url)}"`,
-    `default_view: "${meta.defaultView || 'note'}"`,
+    `default_view: "${meta.defaultView || 'split'}"`,
     `split_ratio: ${meta.splitRatio || 50}`,
     "---",
     "",
@@ -139,7 +141,7 @@ function updateMarkdownFrontmatter(content, meta) {
   if (hasFm) {
     return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, fmBlock);
   } else {
-    // 如果原先没有 Frontmatter，清理前缀的零碎行并加在最顶端
+    // 如果原先没有 Frontmatter，清理前缀杂质
     const cleanBody = raw.replace(/^(?:url:\s*["']?[^\r\n]+["']?|web_title:\s*[^\r\n]+|default_view:\s*[^\r\n]+)\r?\n?/gim, "").trimStart();
     return fmBlock + cleanBody;
   }
@@ -150,7 +152,7 @@ function updateMarkdownFrontmatter(content, meta) {
 export default {
   async activate(context) {
     let settings = {
-      defaultViewMode: "note",
+      defaultViewMode: "split",
       defaultSplitRatio: "50",
       showTopSwitchBar: true,
       enableQuickExcerpt: true,
@@ -180,10 +182,10 @@ export default {
     let currentNoteMeta = {
       url: "",
       title: "",
-      defaultView: "note",
+      defaultView: "split",
       splitRatio: 50,
     };
-    let activeViewMode = "note"; // "note" | "web" | "split"
+    let activeViewMode = "split"; // "split" | "web" | "note"
     let currentSplitRatio = 50;
 
     let isInternalMutating = false;
@@ -194,7 +196,52 @@ export default {
     let iframeEl = null;
     let modalEl = null;
 
-    // ==================== 4. 笔记内容与容器识别 ====================
+    // ==================== 4. 严苛防侧边栏的主编辑区精准定位 ====================
+
+    /**
+     * 严谨查找并锁定右侧主编辑区，坚决排除左侧侧边栏、笔记列表、抽屉和弹窗
+     */
+    function findMainEditorElement() {
+      // 1. 获取所有 ProseMirror
+      const allProse = Array.from(document.querySelectorAll(".ProseMirror"));
+      const validProse = allProse.filter((el) => {
+        if (!el.isConnected) return false;
+        // 绝不属于侧边栏、左侧列表、抽屉、导航
+        const inSidebar = el.closest(".sidebar, .aside, .note-list, .memo-list, [class*='sidebar'], [class*='drawer'], [class*='list-container'], nav, aside, .ant-layout-sider");
+        if (inSidebar) return false;
+        // 绝不属于我们插件自己的容器
+        if (el.closest(".edgeever-wc-web-pane, .edgeever-wc-modal")) return false;
+        return true;
+      });
+
+      if (validProse.length > 0) {
+        // 如果有多个，取 offsetWidth 最大的（主内容编辑区）
+        return validProse.sort((a, b) => b.offsetWidth - a.offsetWidth)[0];
+      }
+
+      // 2. 兜底通用主编辑器选择器（同样严格过滤侧边栏）
+      const fallbackSelectors = [
+        ".tiptap[contenteditable='true']",
+        ".editor-content",
+        ".markdown-body",
+        ".memo-content",
+        "article",
+      ];
+
+      for (const sel of fallbackSelectors) {
+        const list = Array.from(document.querySelectorAll(sel));
+        const filtered = list.filter((el) => {
+          if (!el.isConnected) return false;
+          const inSidebar = el.closest(".sidebar, .aside, .note-list, .memo-list, [class*='sidebar'], [class*='drawer'], [class*='list-container'], nav, aside");
+          return !inSidebar && !el.closest(".edgeever-wc-web-pane, .edgeever-wc-modal");
+        });
+        if (filtered.length > 0) {
+          return filtered.sort((a, b) => b.offsetWidth - a.offsetWidth)[0];
+        }
+      }
+
+      return null;
+    }
 
     async function resolveCurrentNote() {
       try {
@@ -229,7 +276,7 @@ export default {
       } catch (_) {}
 
       // 从 DOM 兜底获取
-      const contentEl = findNoteContentElement();
+      const contentEl = findMainEditorElement();
       if (contentEl) {
         return {
           id: "dom_active_note",
@@ -241,86 +288,85 @@ export default {
       return null;
     }
 
-    function findNoteContentElement() {
-      const selectors = [
-        ".ProseMirror",
-        ".milkdown",
-        ".markdown-body",
-        ".editor-content",
-        ".memo-content",
-        ".note-content",
-        "article",
-      ];
-      for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el && el.isConnected) return el;
-      }
-      return null;
-    }
-
     // ==================== 5. 笔记元数据持久化 ====================
 
     async function persistNoteMetadata(updatedMeta) {
-      if (!currentNote?.id) return;
-
       const merged = { ...currentNoteMeta, ...updatedMeta };
       currentNoteMeta = merged;
 
-      // 1. 即时存入 localStorage 缓存
+      // 1. 存入当前 noteId 的 localStorage 缓存
+      if (currentNote?.id) {
+        try {
+          localStorage.setItem("edgeever_wc_note_" + currentNote.id, JSON.stringify(merged));
+        } catch (_) {}
+      }
+
+      // 2. 存入全局临时缓存（防止新建笔记未即时生成 id）
       try {
-        localStorage.setItem("edgeever_wc_note_" + currentNote.id, JSON.stringify(merged));
+        localStorage.setItem(
+          "edgeever_wc_temp_active",
+          JSON.stringify({ ...merged, time: Date.now() })
+        );
       } catch (_) {}
 
-      // 2. 存入笔记 Frontmatter
-      try {
-        const newFullMarkdown = updateMarkdownFrontmatter(currentNote.content, merged);
-        currentNote.content = newFullMarkdown;
+      // 3. 如果环境提供 storage API，一并存入
+      if (context.storage?.set && currentNote?.id) {
+        try {
+          await context.storage.set("edgeever_wc_note_" + currentNote.id, merged);
+        } catch (_) {}
+      }
 
-        if (context.notes?.update) {
+      // 4. 存入笔记 Frontmatter
+      if (currentNote?.id && context.notes?.update) {
+        try {
+          const newFullMarkdown = updateMarkdownFrontmatter(currentNote.content, merged);
+          currentNote.content = newFullMarkdown;
           await context.notes.update(currentNote.id, {
             contentMarkdown: newFullMarkdown,
             content: newFullMarkdown,
           });
+        } catch (err) {
+          console.warn("[Web Companion] 保存笔记元数据失败:", err);
         }
-      } catch (err) {
-        console.warn("[Web Companion] 保存笔记元数据失败:", err);
       }
     }
 
-    // ==================== 6. 顶栏 (Topbar) 精准挂载在编辑区内部 ====================
+    // ==================== 6. 单例顶栏与触发按钮管理 ====================
+
+    function cleanupAllTriggers() {
+      // 彻底清理页面所有遗留的关联按钮，防止左侧或主区重复出现
+      document.querySelectorAll(".edgeever-wc-bind-trigger").forEach((el) => el.remove());
+      bindTriggerEl = null;
+    }
+
+    function cleanupAllTopbars() {
+      document.querySelectorAll(".edgeever-wc-topbar").forEach((el) => el.remove());
+      topbarEl = null;
+    }
 
     function renderTopbar(contentEl) {
       if (!contentEl || !contentEl.parentElement) return;
       const parent = contentEl.parentElement;
 
-      // 确保父容器具备基础定位能力
-      if (getComputedStyle(parent).position === "static") {
-        parent.style.position = "relative";
-      }
-
       const hasUrl = Boolean(currentNoteMeta.url);
 
       if (!hasUrl) {
-        if (topbarEl) {
-          topbarEl.remove();
-          topbarEl = null;
-        }
+        cleanupAllTopbars();
         renderBindTrigger(parent, contentEl);
         return;
       }
 
-      // 已有关联 URL，移除未关联触发按钮
-      if (bindTriggerEl) {
-        bindTriggerEl.remove();
-        bindTriggerEl = null;
-      }
+      // 已有关联网址，彻底移除未关联按钮
+      cleanupAllTriggers();
 
       if (!settings.showTopSwitchBar) {
-        if (topbarEl) topbarEl.remove();
+        cleanupAllTopbars();
         return;
       }
 
-      if (!topbarEl) {
+      // 确保页面上仅有唯一的 topbar
+      if (!topbarEl || !topbarEl.isConnected) {
+        cleanupAllTopbars();
         topbarEl = document.createElement("div");
         topbarEl.className = "edgeever-wc-topbar";
       }
@@ -361,9 +407,9 @@ export default {
           <div class="edgeever-wc-default-select-wrap" title="配置下次打开此笔记时的默认视图">
             <span>默认:</span>
             <select class="edgeever-wc-select edgeever-wc-default-select">
-              <option value="note" ${currentNoteMeta.defaultView === "note" ? "selected" : ""}>笔记视图</option>
               <option value="split" ${currentNoteMeta.defaultView === "split" ? "selected" : ""}>双屏编辑</option>
               <option value="web" ${currentNoteMeta.defaultView === "web" ? "selected" : ""}>网页视图</option>
+              <option value="note" ${currentNoteMeta.defaultView === "note" ? "selected" : ""}>笔记视图</option>
             </select>
           </div>
           <button type="button" class="edgeever-wc-icon-btn edgeever-wc-btn-manage" title="修改或解绑网址">
@@ -388,9 +434,6 @@ export default {
           const newDef = selectEl.value;
           currentNoteMeta.defaultView = newDef;
           await persistNoteMetadata({ defaultView: newDef });
-          if (context.ui?.showNotice) {
-            context.ui.showNotice(`已设置下次打开此笔记默认使用「${selectEl.options[selectEl.selectedIndex].text}」`, { type: "info" });
-          }
         };
       }
 
@@ -403,14 +446,15 @@ export default {
         };
       }
 
-      // 正确挂载位置：位于内容元素之前（富文本工具栏下方、正文最上方）
-      if (topbarEl.nextSibling !== contentEl) {
+      // 挂载在主内容元素之前
+      if (topbarEl.nextSibling !== contentEl && topbarEl.parentElement !== parent) {
         parent.insertBefore(topbarEl, contentEl);
       }
     }
 
     function renderBindTrigger(parent, contentEl) {
-      if (bindTriggerEl && bindTriggerEl.isConnected) return;
+      // 彻底清理全页面可能已存在的所有关联按钮，确保全局绝对唯一
+      cleanupAllTriggers();
 
       bindTriggerEl = document.createElement("button");
       bindTriggerEl.type = "button";
@@ -453,7 +497,6 @@ export default {
         resizerEl.className = "edgeever-wc-resizer";
         resizerEl.title = "拖拽调节左右分屏比例 (双击重置为 50:50)";
 
-        // 插入在 contentEl 之后
         if (contentEl.nextSibling) {
           parent.insertBefore(resizerEl, contentEl.nextSibling);
           parent.insertBefore(webPaneEl, resizerEl.nextSibling);
@@ -481,15 +524,20 @@ export default {
         return;
       }
 
+      const domain = extractDomain(url);
+
       webPaneEl.innerHTML = `
         <div class="edgeever-wc-web-toolbar">
           <div class="edgeever-wc-web-nav-group">
             <button type="button" class="edgeever-wc-icon-btn edgeever-wc-btn-refresh" title="刷新页面">
               ${ICONS.refresh}
             </button>
-            <a class="edgeever-wc-icon-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="在系统浏览器全屏打开">
-              ${ICONS.external}
+            <a class="edgeever-wc-btn-launch" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="在系统浏览器新窗口中打开此网页">
+              ${ICONS.external} <span>在浏览器打开</span>
             </a>
+            <button type="button" class="edgeever-wc-icon-btn edgeever-wc-btn-copy" title="复制网址到剪贴板">
+              ${ICONS.copy}
+            </button>
           </div>
 
           <div class="edgeever-wc-url-bar" title="回车可重新加载网址">
@@ -510,6 +558,9 @@ export default {
 
         <div class="edgeever-wc-iframe-wrap">
           <iframe class="edgeever-wc-iframe" src="${escapeHtml(url)}" data-loaded-url="${escapeHtml(url)}" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
+          <div class="edgeever-wc-csp-hint">
+            <span>${ICONS.shield} 若因站点安全保护限制 (CSP) 未显示页面，可点击上方「在浏览器打开」</span>
+          </div>
         </div>
       `;
 
@@ -537,7 +588,17 @@ export default {
       if (refreshBtn && iframeEl) {
         refreshBtn.onclick = () => {
           iframeEl.src = iframeEl.src;
-          if (context.ui?.showNotice) context.ui.showNotice("页面正在刷新...", { type: "info" });
+        };
+      }
+
+      // 复制链接按钮
+      const copyBtn = webPaneEl.querySelector(".edgeever-wc-btn-copy");
+      if (copyBtn) {
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(url).then(() => {
+            copyBtn.style.color = "var(--wc-accent)";
+            setTimeout(() => { copyBtn.style.color = ""; }, 1200);
+          });
         };
       }
 
@@ -565,16 +626,17 @@ export default {
         if (resizerEl) resizerEl.style.display = "none";
       } else if (activeViewMode === "web") {
         // 2) 网页视图：全屏显示网页，隐藏笔记正文
-        parent.style.display = "";
+        parent.style.display = "flex";
+        parent.style.flexDirection = "column";
         contentEl.style.display = "none";
         if (resizerEl) resizerEl.style.display = "none";
 
         webPaneEl.style.display = "flex";
+        webPaneEl.style.flex = "1";
         webPaneEl.style.width = "100%";
-        webPaneEl.style.height = "calc(100vh - 160px)";
-        webPaneEl.style.minHeight = "520px";
+        webPaneEl.style.height = "calc(100vh - 140px)";
+        webPaneEl.style.minHeight = "480px";
         webPaneEl.style.borderLeft = "none";
-        webPaneEl.style.borderRadius = "var(--wc-radius)";
       } else if (activeViewMode === "split") {
         // 3) 双屏对照模式：左侧笔记 + 右侧网页
         parent.style.display = "flex";
@@ -595,9 +657,9 @@ export default {
 
         webPaneEl.style.display = "flex";
         webPaneEl.style.flex = "1";
-        webPaneEl.style.width = `calc(${100 - ratio}% - 6px)`;
-        webPaneEl.style.height = "calc(100vh - 160px)";
-        webPaneEl.style.minHeight = "520px";
+        webPaneEl.style.width = `calc(${100 - ratio}% - 8px)`;
+        webPaneEl.style.height = "calc(100vh - 140px)";
+        webPaneEl.style.minHeight = "480px";
         webPaneEl.style.borderLeft = "1px solid var(--wc-border)";
       }
     }
@@ -665,7 +727,7 @@ export default {
 
       try {
         let inserted = false;
-        const pm = document.querySelector(".ProseMirror");
+        const pm = findMainEditorElement();
         let editor = pm?.pmViewDesc?.view?.editor;
         if (editor?.commands) {
           editor.commands.insertContent(excerptMd);
@@ -682,10 +744,6 @@ export default {
             });
           }
         }
-
-        if (context.ui?.showNotice) {
-          context.ui.showNotice("已将网页参考链接一键摘录到笔记！", { type: "success" });
-        }
       } catch (err) {
         console.warn("[Web Companion] 摘录失败:", err);
       }
@@ -694,7 +752,7 @@ export default {
     // ==================== 8. 视图模式切换控制 ====================
 
     function switchViewMode(targetMode) {
-      if (!["note", "web", "split"].includes(targetMode)) targetMode = "note";
+      if (!["note", "web", "split"].includes(targetMode)) targetMode = "split";
       activeViewMode = targetMode;
 
       if (topbarEl) {
@@ -703,20 +761,20 @@ export default {
         });
       }
 
-      const contentEl = findNoteContentElement();
+      const contentEl = findMainEditorElement();
       if (contentEl) {
         renderMainViews(contentEl);
       }
     }
 
-    // ==================== 9. 关联网址模态对话框 (Modal) ====================
+    // ==================== 9. 关联网页模态对话框 (Modal) ====================
 
     async function openUrlModal() {
       closeUrlModal();
 
       let initialUrl = currentNoteMeta.url || "";
       let initialTitle = currentNoteMeta.title || "";
-      let initialDefaultView = currentNoteMeta.defaultView || settings.defaultViewMode || "note";
+      let initialDefaultView = currentNoteMeta.defaultView || settings.defaultViewMode || "split";
 
       // 自动感知剪贴板
       if (!initialUrl && navigator.clipboard?.readText) {
@@ -754,9 +812,9 @@ export default {
           <div class="edgeever-wc-form-group">
             <label class="edgeever-wc-form-label">下次打开此笔记时的默认视图</label>
             <select class="edgeever-wc-form-input edgeever-wc-input-default-view">
-              <option value="note" ${initialDefaultView === "note" ? "selected" : ""}>📝 笔记视图 (纯净笔记文本)</option>
-              <option value="split" ${initialDefaultView === "split" ? "selected" : ""}>🌓 双屏编辑 (左侧笔记 + 右侧网页)</option>
-              <option value="web" ${initialDefaultView === "web" ? "selected" : ""}>🌐 网页视图 (全屏沉浸浏览)</option>
+              <option value="split" ${initialDefaultView === "split" ? "selected" : ""}>🌓 双屏编辑 (推荐：左侧记笔记 + 右侧看网页)</option>
+              <option value="web" ${initialDefaultView === "web" ? "selected" : ""}>🌐 网页视图 (全屏沉浸浏览网页)</option>
+              <option value="note" ${initialDefaultView === "note" ? "selected" : ""}>📝 笔记视图 (专注纯净笔记正文)</option>
             </select>
           </div>
 
@@ -799,11 +857,10 @@ export default {
         if (e.target === modalEl) doClose();
       };
 
-      // 保存绑定
+      // 保存绑定（无阻断式弹窗，直接平滑生效）
       confirmBtn.onclick = async () => {
         let enteredUrl = (urlInput.value || "").trim();
         if (!enteredUrl) {
-          if (context.ui?.showNotice) context.ui.showNotice("请输入有效的网址！", { type: "warning" });
           urlInput.focus();
           return;
         }
@@ -813,7 +870,7 @@ export default {
         }
 
         const enteredTitle = (titleInput.value || "").trim() || extractDomain(enteredUrl);
-        const selectedView = viewSelect.value || "note";
+        const selectedView = viewSelect.value || "split";
 
         currentNoteMeta.url = enteredUrl;
         currentNoteMeta.title = enteredTitle;
@@ -826,11 +883,13 @@ export default {
         });
 
         doClose();
-        switchViewMode(selectedView);
-        refreshComponentState();
 
-        if (context.ui?.showNotice) {
-          context.ui.showNotice(`已成功关联网页「${enteredTitle}」！`, { type: "success" });
+        // 立即切换并强制渲染
+        activeViewMode = selectedView;
+        const contentEl = findMainEditorElement();
+        if (contentEl) {
+          renderTopbar(contentEl);
+          renderMainViews(contentEl);
         }
       };
 
@@ -843,11 +902,12 @@ export default {
 
           await persistNoteMetadata({ url: "" });
           doClose();
-          switchViewMode("note");
-          refreshComponentState();
 
-          if (context.ui?.showNotice) {
-            context.ui.showNotice("已解绑网页，该笔记已恢复为纯普通笔记。", { type: "info" });
+          activeViewMode = "note";
+          const contentEl = findMainEditorElement();
+          if (contentEl) {
+            renderTopbar(contentEl);
+            renderMainViews(contentEl);
           }
         };
       }
@@ -874,12 +934,18 @@ export default {
 
         // 全面嗅探 URL
         const parsed = extractUrlAndMeta(note.content, note.id);
-        const prevUrl = currentNoteMeta.url;
+
+        // 如果内存中刚主动关联了 url，且嗅探为空，保留内存状态防冲掉
+        if (!parsed.url && currentNoteMeta.url) {
+          parsed.url = currentNoteMeta.url;
+          parsed.title = currentNoteMeta.title;
+          parsed.defaultView = currentNoteMeta.defaultView;
+        }
 
         currentNoteMeta = {
           url: parsed.url,
           title: parsed.title || (parsed.url ? extractDomain(parsed.url) : ""),
-          defaultView: parsed.defaultView || settings.defaultViewMode || "note",
+          defaultView: parsed.defaultView || settings.defaultViewMode || "split",
           splitRatio: parsed.splitRatio || Number(settings.defaultSplitRatio) || 50,
         };
 
@@ -889,7 +955,7 @@ export default {
           currentSplitRatio = currentNoteMeta.splitRatio;
         }
 
-        const contentEl = findNoteContentElement();
+        const contentEl = findMainEditorElement();
         if (contentEl) {
           renderTopbar(contentEl);
           renderMainViews(contentEl);
@@ -969,7 +1035,7 @@ export default {
 
   deactivate() {
     document.querySelectorAll(".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-modal-backdrop, .edgeever-wc-web-pane, .edgeever-wc-resizer").forEach((el) => el.remove());
-    const content = document.querySelector(".ProseMirror, .milkdown, article, .editor-content");
+    const content = document.querySelector(".ProseMirror, .tiptap, .editor-content");
     if (content) {
       content.style.display = "";
       content.style.flex = "";
