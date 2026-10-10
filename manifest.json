@@ -2,7 +2,7 @@
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
   "name": "Web Companion: /web 插入网页与 iframe 全尺寸沉浸浏览",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "apiVersion": "2",
   "settingsUi": "host",
   "description": "Directly type /web to insert an interactive full-size web iframe in your notes. Features auto editor-width adaptation (Breakout), fluid drag height resizing, title & URL settings, and frosted Mac toolbar.",

@@ -1,11 +1,11 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.2.1 - 自适应编辑器全宽 (Editor Breakout) 与自由高度伸缩持久化系统
+ * v1.2.2 - 紧急修复嵌入挂载与插入机制，完美融合自适应编辑器全宽与高度自由拖拽
  */
 
 console.log(
-  "%c[EdgeEver Web Companion] v1.2.1 Loaded - Auto Editor Width & Fluid Height Resizing",
+  "%c[EdgeEver Web Companion] v1.2.2 Loaded - Bulletproof Embed Mount & Auto Editor Width",
   "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
 );
 
@@ -168,7 +168,6 @@ const INJECTED_CSS = `
 
 .edgeever-web-iframe-container {
   width: 100% !important;
-  height: 720px;
   min-height: 320px !important;
   position: relative !important;
   background: #101318 !important;
@@ -357,7 +356,6 @@ async function loadUrlIntoIframe(card, iframe, url, loadingBar) {
   if (pluginContext?.network?.publicNetwork?.get) {
     try {
       const resp = await pluginContext.network.publicNetwork.get(url, {
-        timeout: 10000,
         headers: {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "User-Agent": navigator.userAgent,
@@ -421,7 +419,10 @@ function updateEmbedAttributesInDoc(embedId, oldUrl, newTitle, newUrl, newHeight
   if (editor?.state?.doc) {
     try {
       editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "edgeeverPluginEmbed" && (node.attrs.id === embedId || node.attrs.resourceId === oldUrl)) {
+        if (
+          (node.type.name === "edgeeverPluginEmbed" || node.type.name === "pluginEmbed") &&
+          (node.attrs.id === embedId || node.attrs.resourceId === oldUrl)
+        ) {
           editor.commands.command(({ tr }) => {
             tr.setNodeMarkup(pos, undefined, {
               ...node.attrs,
@@ -465,7 +466,7 @@ function updateEmbedAttributesInDoc(embedId, oldUrl, newTitle, newUrl, newHeight
 // ==================== 5. 宽度自适应 (Editor Breakout) 引擎 ====================
 
 function applyCardLayout(card, widthMode) {
-  if (!card || !card.parentElement) return;
+  if (!card || !card.parentElement || card.classList.contains("is-fullscreen-view")) return;
 
   if (widthMode === "normal") {
     card.style.width = "100%";
@@ -475,71 +476,58 @@ function applyCardLayout(card, widthMode) {
     return;
   }
 
-  // 向上寻找主编辑器可滚动/工作区视口容器
-  let cur = card.parentElement;
-  let viewport = null;
+  try {
+    const parent = card.parentElement;
+    let viewport = card.closest(".overflow-y-auto") || card.closest(".overflow-auto");
 
-  while (cur && cur !== document.body) {
-    const style = window.getComputedStyle(cur);
-    const overflowY = style.overflowY;
-    const isScroll = (overflowY === "auto" || overflowY === "scroll");
-
-    if (isScroll && cur.clientWidth > 500) {
-      viewport = cur;
-      break;
-    }
-
-    if (
-      cur.classList.contains("note-content") ||
-      cur.classList.contains("editor-container") ||
-      cur.classList.contains("tiptap") ||
-      cur.tagName === "MAIN"
-    ) {
-      viewport = cur;
-    }
-    cur = cur.parentElement;
-  }
-
-  if (!viewport) {
-    // 降级为寻找宽度明显大于普通段落的祖先容器
-    cur = card.parentElement;
-    while (cur && cur !== document.body) {
-      if (cur.clientWidth > card.parentElement.clientWidth + 60) {
-        viewport = cur;
-        break;
+    if (!viewport) {
+      let cur = parent;
+      while (cur && cur !== document.body) {
+        if (cur.clientWidth > parent.clientWidth + 40) {
+          viewport = cur;
+          break;
+        }
+        cur = cur.parentElement;
       }
-      cur = cur.parentElement;
     }
-  }
 
-  if (!viewport) {
-    viewport = card.closest(".overflow-y-auto") || card.offsetParent || document.body;
-  }
+    if (viewport) {
+      const viewportRect = viewport.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const viewportWidth = viewport.clientWidth;
 
-  const viewportRect = viewport.getBoundingClientRect();
-  const parentRect = card.parentElement.getBoundingClientRect();
-  const viewportWidth = viewport.clientWidth;
+      if (widthMode === "editor") {
+        // 适应编辑器工作区宽度，左右保留 20px 留白
+        const targetWidth = Math.max(parentRect.width, viewportWidth - 40);
+        const targetLeft = viewportRect.left + 20;
+        const offset = Math.round(targetLeft - parentRect.left);
 
-  if (widthMode === "editor") {
-    // 适应编辑器工作区宽度，左右保留 20px 舒适留白
-    const targetWidth = Math.max(380, viewportWidth - 40);
-    const targetLeft = viewportRect.left + 20;
-    const offset = Math.round(targetLeft - parentRect.left);
+        card.style.width = `${targetWidth}px`;
+        card.style.maxWidth = `${targetWidth}px`;
+        card.style.marginLeft = `${offset}px`;
+        card.style.marginRight = "auto";
+      } else if (widthMode === "wide") {
+        // 宽屏模式 1080px 居中
+        const maxW = Math.min(1080, viewportWidth - 32);
+        const targetLeft = viewportRect.left + (viewportWidth - maxW) / 2;
+        const offset = Math.round(targetLeft - parentRect.left);
 
-    card.style.width = `${targetWidth}px`;
-    card.style.maxWidth = `${targetWidth}px`;
-    card.style.marginLeft = `${offset}px`;
-    card.style.marginRight = "auto";
-  } else if (widthMode === "wide") {
-    // 宽屏模式 1080px 居中
-    const maxW = Math.min(1080, viewportWidth - 32);
-    const targetLeft = viewportRect.left + (viewportWidth - maxW) / 2;
-    const offset = Math.round(targetLeft - parentRect.left);
-
-    card.style.width = `${maxW}px`;
-    card.style.maxWidth = `${maxW}px`;
-    card.style.marginLeft = `${offset}px`;
-    card.style.marginRight = "auto";
+        card.style.width = `${maxW}px`;
+        card.style.maxWidth = `${maxW}px`;
+        card.style.marginLeft = `${offset}px`;
+        card.style.marginRight = "auto";
+      }
+    } else {
+      card.style.width = "100%";
+      card.style.maxWidth = "100%";
+      card.style.marginLeft = "0px";
+      card.style.marginRight = "0px";
+    }
+  } catch (_) {
+    card.style.width = "100%";
+    card.style.maxWidth = "100%";
+    card.style.marginLeft = "0px";
+    card.style.marginRight = "0px";
   }
 }
 
@@ -715,7 +703,7 @@ function mountWebCompanionCard(container, embedData) {
   }
 
   let currentUrl = sanitizeUrl(initialUrl);
-  let domain = "";
+  let domain = "Web View";
   try {
     domain = new URL(currentUrl).hostname || currentUrl;
   } catch (_) {
@@ -938,6 +926,10 @@ function mountWebCompanionCard(container, embedData) {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
 
+      if (heightBadge) {
+        setTimeout(() => { heightBadge.style.opacity = "0"; }, 600);
+      }
+
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
 
@@ -954,7 +946,7 @@ function mountWebCompanionCard(container, embedData) {
       dragCurrentHeight = startHeight;
       resizeBar.classList.add("is-dragging");
 
-      // 禁用 iframe pointer-events，防止鼠标划入 iframe 导致拖拽中断卡死
+      // 关键！禁用 iframe pointer-events，防止鼠标划入 iframe 导致拖拽中断卡死
       if (iframe) iframe.style.pointerEvents = "none";
       document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
@@ -982,17 +974,27 @@ function mountWebCompanionCard(container, embedData) {
   renderCardContent();
   container.appendChild(card);
 
+  // 初次与延迟应用全宽布局
+  applyCardLayout(card, currentWidthMode);
+  setTimeout(() => applyCardLayout(card, currentWidthMode), 60);
+  setTimeout(() => applyCardLayout(card, currentWidthMode), 200);
+
   // 监听尺寸变化以自适应编辑器宽度
   let resizeObserver = null;
   if (window.ResizeObserver) {
-    resizeObserver = new ResizeObserver(() => {
-      if (!card.classList.contains("is-fullscreen-view")) {
-        applyCardLayout(card, currentWidthMode);
+    try {
+      resizeObserver = new ResizeObserver(() => {
+        if (!card.classList.contains("is-fullscreen-view")) {
+          applyCardLayout(card, currentWidthMode);
+        }
+      });
+      if (card.parentElement) {
+        resizeObserver.observe(card.parentElement);
+        if (card.parentElement.parentElement) {
+          resizeObserver.observe(card.parentElement.parentElement);
+        }
       }
-    });
-    if (card.parentElement) {
-      resizeObserver.observe(card.parentElement);
-    }
+    } catch (_) {}
   }
 
   const onWindowResize = () => {
@@ -1001,11 +1003,6 @@ function mountWebCompanionCard(container, embedData) {
     }
   };
   window.addEventListener("resize", onWindowResize);
-
-  // 延迟二次修正布局（等待 DOM 树完全挂载就位）
-  setTimeout(() => {
-    applyCardLayout(card, currentWidthMode);
-  }, 100);
 
   return () => {
     if (resizeObserver) resizeObserver.disconnect();
@@ -1105,125 +1102,194 @@ function promptInsertWebUrl(onConfirmCallback) {
 // ==================== 9. 插件激活与核心生命周期 ====================
 
 export default {
-  async activate(context) {
+  activate(context) {
     pluginContext = context;
     ensureInjectedStyle();
 
-    // 1. 注册 EdgeEver 官方原生插件嵌入类型
+    // 1. 注册官方原生嵌入渲染器 (同时支持 mount 与 render，兼容 web-view 与 web-companion 双类型)
     if (context.editor?.embeds?.register) {
+      const rendererDef = {
+        type: "web-view",
+        title: "网页视窗 (Web Embed)",
+        mount(container, embedData) {
+          return mountWebCompanionCard(container, embedData);
+        },
+        render(container, embedData) {
+          return mountWebCompanionCard(container, embedData);
+        },
+      };
+
+      try {
+        context.editor.embeds.register(rendererDef);
+        console.log("[Web Companion] Registered 'web-view' renderer successfully.");
+      } catch (err) {
+        console.warn("[Web Companion] Register 'web-view' failed:", err);
+      }
+
       try {
         context.editor.embeds.register({
+          ...rendererDef,
           type: "web-companion",
-          title: "网页视窗 (Web Embed)",
-          render: (container, data) => {
-            return mountWebCompanionCard(container, data);
-          },
         });
-        console.log("[Web Companion] embeds.register('web-companion') succeeded.");
-      } catch (err) {
-        console.error("[Web Companion] embeds.register failed:", err);
-      }
+        console.log("[Web Companion] Registered 'web-companion' renderer successfully.");
+      } catch (_) {}
     }
 
-    // 2. 插入逻辑：调用官方 context.editor.insertEmbed
-    const triggerInsertWeb = (targetUrl) => {
-      let url = sanitizeUrl(targetUrl);
-      let title = url;
+    // 2. 核心插入执行逻辑 (三重容灾插入系统)
+    async function executeInsertWeb(targetUrl) {
+      let domain = "Web View";
       try {
-        title = new URL(url).hostname || url;
+        domain = new URL(targetUrl).hostname || "Web View";
       } catch (_) {}
 
+      const height = 720;
+      const widthMode = "editor";
+
+      // 方案 A：调用官方 context.editor.insertEmbed
       if (context.editor?.insertEmbed) {
         try {
-          context.editor.insertEmbed("web-companion", {
-            url,
-            title,
-            height: 720,
-            widthMode: "editor",
+          await context.editor.insertEmbed({
+            type: "web-view",
+            resourceId: targetUrl,
+            title: domain,
+            data: { url: targetUrl, title: domain, height, widthMode },
           });
           return;
-        } catch (e) {
-          console.warn("[Web Companion] insertEmbed failed, fallback to tiptap:", e);
+        } catch (err) {
+          console.warn("[Web Companion] insertEmbed failed, fallback to tiptap:", err);
         }
       }
 
-      // Tiptap 兜底插入
+      // 方案 B：使用 Tiptap editor 实例直接插入
       const editor = getEditorInstance();
       if (editor?.commands?.insertContent) {
-        editor.commands.insertContent({
-          type: "edgeeverPluginEmbed",
-          attrs: {
-            pluginId: "org.edgeever.plugins.web-companion",
-            embedType: "web-companion",
-            title,
-            resourceId: url,
-            dataJson: JSON.stringify({ url, title, height: 720, widthMode: "editor" }),
-          },
-        });
+        try {
+          const embedId = `embed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          editor.commands.insertContent({
+            type: "edgeeverPluginEmbed",
+            attrs: {
+              id: embedId,
+              pluginId: "org.edgeever.plugins.web-companion",
+              type: "web-view",
+              resourceId: targetUrl,
+              title: domain,
+              dataJson: JSON.stringify({ url: targetUrl, title: domain, height, widthMode }),
+            },
+          });
+          return;
+        } catch (err) {
+          console.warn("[Web Companion] insertContent failed:", err);
+        }
       }
-    };
 
-    // 3. 注册命令与快捷键
-    if (context.ui?.commands?.register) {
-      context.ui.commands.register({
-        id: "web-companion.insert",
-        name: "Web Companion: /web 插入网页",
-        shortcut: "Alt+W",
-        execute: () => {
-          promptInsertWebUrl((url) => triggerInsertWeb(url));
-        },
+      // 方案 C：在 Markdown 模式下插入官方语法
+      const mdCode = `\n\`\`\`edgeever-plugin-embed\n${JSON.stringify({
+        id: `embed_${Date.now()}`,
+        pluginId: "org.edgeever.plugins.web-companion",
+        type: "web-view",
+        resourceId: targetUrl,
+        title: domain,
+        dataJson: JSON.stringify({ url: targetUrl, title: domain, height, widthMode }),
+      })}\n\`\`\`\n`;
+
+      if (context.editor?.insertAtCursor) {
+        try {
+          await context.editor.insertAtCursor(mdCode);
+          return;
+        } catch (_) {}
+      }
+
+      try {
+        document.execCommand("insertText", false, mdCode);
+      } catch (_) {}
+    }
+
+    function openInsertDialog() {
+      promptInsertWebUrl((url) => {
+        executeInsertWeb(url);
       });
     }
 
-    // 全局快捷键 Alt+W 唤起
+    // 3. 输入 /web 快捷触发处理
+    function handleEditorKeyDown(e) {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        const sel = window.getSelection();
+        if (!sel || !sel.isCollapsed || !sel.anchorNode) return;
+
+        const node = sel.anchorNode;
+        const text = node.textContent || "";
+        const offset = sel.anchorOffset;
+
+        if (offset >= 4 && text.slice(offset - 4, offset).toLowerCase() === "/web") {
+          const prefix = text.slice(0, offset - 4);
+          const isAtStart = offset === 4 || /[\s\n]$/.test(prefix);
+
+          if (isAtStart) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            try {
+              const range = sel.getRangeAt(0);
+              const newRange = document.createRange();
+              newRange.setStart(node, offset - 4);
+              newRange.setEnd(node, offset);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+              document.execCommand("delete");
+            } catch (_) {}
+
+            openInsertDialog();
+          }
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleEditorKeyDown, true);
+
+    // 4. 全局快捷键 Alt+W 唤起
     const onGlobalKeydown = (e) => {
       if ((e.altKey || e.metaKey) && (e.key === "w" || e.key === "W") && !e.shiftKey && !e.ctrlKey) {
         const isEditing = ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName);
         if (!isEditing || document.activeElement?.closest(".edgeever-web-modal")) {
           e.preventDefault();
-          promptInsertWebUrl((url) => triggerInsertWeb(url));
+          openInsertDialog();
         }
       }
     };
     window.addEventListener("keydown", onGlobalKeydown, true);
 
-    // 4. 输入 /web 自动触发插入监听
-    const onInputWebTrigger = (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        const sel = window.getSelection();
-        if (!sel || !sel.rangeCount) return;
-        const anchorNode = sel.anchorNode;
-        if (!anchorNode) return;
+    // 5. 注册命令
+    if (context.commands?.register) {
+      context.commands.register({
+        id: "web-insert-iframe",
+        title: "Web Companion: /web 插入网页 (Web Embed)",
+        shortcut: "Alt-W",
+        run: () => openInsertDialog(),
+        execute: () => openInsertDialog(),
+      });
+    }
 
-        const text = anchorNode.textContent || "";
-        const offset = sel.anchorOffset;
-        const textBeforeCursor = text.slice(0, offset);
+    if (context.ui?.commands?.register) {
+      context.ui.commands.register({
+        id: "web-companion.insert",
+        name: "Web Companion: /web 插入网页",
+        shortcut: "Alt+W",
+        execute: () => openInsertDialog(),
+      });
+    }
 
-        const match = textBeforeCursor.match(/(?:^|\s)\/web$/i);
-        if (match) {
-          e.preventDefault();
-          e.stopPropagation();
-
-          // 清除 /web 触发词
-          try {
-            const range = sel.getRangeAt(0);
-            const start = offset - match[0].length + (match[0].startsWith(" ") ? 1 : 0);
-            range.setStart(anchorNode, start);
-            range.setEnd(anchorNode, offset);
-            range.deleteContents();
-          } catch (_) {}
-
-          promptInsertWebUrl((url) => triggerInsertWeb(url));
-        }
-      }
-    };
-    window.addEventListener("keydown", onInputWebTrigger, true);
-
-    console.log("[Web Companion] v1.2.1 initialized successfully.");
+    console.log("[Web Companion] v1.2.2 initialized successfully.");
   },
 
-  async deactivate() {
-    ensureInjectedStyle();
+  deactivate() {
+    if (window.__edgeever_wc_observer) {
+      try {
+        window.__edgeever_wc_observer.disconnect();
+      } catch (_) {}
+      window.__edgeever_wc_observer = null;
+    }
+    document.querySelectorAll(".edgeever-web-modal-backdrop, .edgeever-web-floating-trigger").forEach((el) => el.remove());
+    document.getElementById("edgeever-web-companion-style")?.remove();
     console.log("[Web Companion] deactivated.");
   },
 };
