@@ -1,7 +1,7 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 极致纯净、Mac 视效、三模态双屏对照浏览与无侵入网页增强套件
- * v1.0.0
+ * v1.0.1 - 深度修复主题暗黑配色、精准挂载位置与网页渲染
  */
 
 // ==================== 1. 基础工具与 SVG 图标库 ====================
@@ -44,56 +44,105 @@ const ICONS = {
   shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
 };
 
-// ==================== 2. Frontmatter 元数据解析与持久化引擎 ====================
+// ==================== 2. 全面稳健的 URL 与元数据嗅探 ====================
 
-function parseFrontmatter(markdown) {
-  if (!markdown || typeof markdown !== "string") {
-    return { frontmatter: {}, body: "" };
-  }
+function extractUrlAndMeta(content, noteId) {
+  let url = "";
+  let title = "";
+  let defaultView = "note";
+  let splitRatio = 50;
 
-  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: markdown };
-  }
-
-  const yamlText = match[1];
-  const body = match[2];
-  const frontmatter = {};
-
-  yamlText.split(/\r?\n/).forEach((line) => {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx > 0) {
-      const key = line.slice(0, colonIdx).trim();
-      let val = line.slice(colonIdx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
+  // 1. 本地存储快速恢复 (基于当前 noteId，确保 100% 不受格式丢失影响)
+  if (noteId) {
+    try {
+      const cached = localStorage.getItem("edgeever_wc_note_" + noteId);
+      if (cached) {
+        const obj = JSON.parse(cached);
+        if (obj.url) {
+          url = obj.url;
+          title = obj.title || "";
+          defaultView = obj.defaultView || "note";
+          splitRatio = Number(obj.splitRatio) || 50;
+        }
       }
-      frontmatter[key] = val;
-    }
-  });
+    } catch (_) {}
+  }
 
-  return { frontmatter, body };
+  const raw = String(content || "");
+
+  // 2. 逐行嗅探 YAML Frontmatter 或文本行首定义的属性
+  const lines = raw.split(/\r?\n/).slice(0, 30);
+  for (const line of lines) {
+    const trim = line.trim();
+
+    // url: "https://..." 或 url: https://...
+    const mUrl = trim.match(/^url:\s*["']?(https?:\/\/[^\s"']+)["']?/i);
+    if (mUrl && mUrl[1]) {
+      url = mUrl[1].trim();
+    }
+
+    // web_title: "xxx" 或 web_title: xxx
+    const mTitle = trim.match(/^web_title:\s*["']?([^"'\r\n]+)["']?/i);
+    if (mTitle && mTitle[1]) {
+      title = mTitle[1].trim();
+    }
+
+    // default_view: web | split | note
+    const mView = trim.match(/^default_view:\s*["']?(note|web|split)["']?/i);
+    if (mView && mView[1]) {
+      defaultView = mView[1].toLowerCase();
+    }
+
+    // split_ratio: 50
+    const mRatio = trim.match(/^split_ratio:\s*["']?(\d+)["']?/i);
+    if (mRatio && mRatio[1]) {
+      splitRatio = Number(mRatio[1]);
+    }
+  }
+
+  // 3. 兜底：如果未明确 url: 但正文开头包含独立链接
+  if (!url) {
+    for (const line of lines) {
+      const linkMatch = line.trim().match(/^(?:\[[^\]]*\]\()?https?:\/\/[^\s\)\"\'>]+/i);
+      if (linkMatch && linkMatch[0]) {
+        const clean = linkMatch[0].replace(/^\[[^\]]*\]\(/, "").replace(/\)$/, "").trim();
+        if (/^https?:\/\//i.test(clean)) {
+          url = clean;
+          break;
+        }
+      }
+    }
+  }
+
+  return { url, title, defaultView, splitRatio };
 }
 
-function stringifyFrontmatter(frontmatter, body) {
-  const keys = Object.keys(frontmatter).filter((k) => frontmatter[k] !== undefined && frontmatter[k] !== "");
-  if (keys.length === 0) {
-    return body || "";
+function updateMarkdownFrontmatter(content, meta) {
+  const raw = String(content || "");
+  const hasFm = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.test(raw);
+
+  if (!meta.url) {
+    // 解绑：移除开头的 frontmatter
+    return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
   }
 
-  const lines = ["---"];
-  keys.forEach((key) => {
-    let val = String(frontmatter[key]);
-    if (val.includes(":") || val.includes("#") || val.includes("\n")) {
-      val = `"${val.replace(/"/g, '\\"')}"`;
-    }
-    lines.push(`${key}: ${val}`);
-  });
-  lines.push("---");
-  lines.push("");
+  const fmBlock = [
+    "---",
+    `url: "${meta.url}"`,
+    `web_title: "${meta.title || extractDomain(meta.url)}"`,
+    `default_view: "${meta.defaultView || 'note'}"`,
+    `split_ratio: ${meta.splitRatio || 50}`,
+    "---",
+    "",
+  ].join("\n");
 
-  const cleanBody = (body || "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-  return lines.join("\n") + cleanBody;
+  if (hasFm) {
+    return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, fmBlock);
+  } else {
+    // 如果原先没有 Frontmatter，清理前缀的零碎行并加在最顶端
+    const cleanBody = raw.replace(/^(?:url:\s*["']?[^\r\n]+["']?|web_title:\s*[^\r\n]+|default_view:\s*[^\r\n]+)\r?\n?/gim, "").trimStart();
+    return fmBlock + cleanBody;
+  }
 }
 
 // ==================== 3. 插件主体定义 ====================
@@ -139,11 +188,10 @@ export default {
 
     let isInternalMutating = false;
     let topbarEl = null;
-    let splitWrapperEl = null;
-    let webPaneEl = null;
+    let bindTriggerEl = null;
     let resizerEl = null;
+    let webPaneEl = null;
     let iframeEl = null;
-    let frameGuardEl = null;
     let modalEl = null;
 
     // ==================== 4. 笔记内容与容器识别 ====================
@@ -179,36 +227,17 @@ export default {
           if (n) return { id: n.id, title: n.title, content: n.contentMarkdown || n.content || "" };
         }
       } catch (_) {}
-      return null;
-    }
 
-    function findNoteEditorContainer() {
-      const candidates = [
-        ".edgeever-workspace-editor",
-        ".workspace-leaf.mod-active .view-content",
-        ".milkdown",
-        ".ProseMirror",
-        ".editor-content",
-        "article",
-      ];
-      for (const sel of candidates) {
-        const el = document.querySelector(sel);
-        if (el && el.isConnected) {
-          // 向上寻找到合适的主工作区容器
-          let container = el;
-          while (container.parentElement && container.parentElement !== document.body) {
-            if (
-              container.classList.contains("edgeever-workspace-editor") ||
-              container.classList.contains("view-content") ||
-              container.getAttribute("role") === "main"
-            ) {
-              return container;
-            }
-            container = container.parentElement;
-          }
-          return el.parentElement || el;
-        }
+      // 从 DOM 兜底获取
+      const contentEl = findNoteContentElement();
+      if (contentEl) {
+        return {
+          id: "dom_active_note",
+          title: "当前笔记",
+          content: contentEl.innerText || contentEl.textContent || "",
+        };
       }
+
       return null;
     }
 
@@ -229,28 +258,22 @@ export default {
       return null;
     }
 
-    // ==================== 5. 笔记持久化保存 ====================
+    // ==================== 5. 笔记元数据持久化 ====================
 
     async function persistNoteMetadata(updatedMeta) {
       if (!currentNote?.id) return;
+
+      const merged = { ...currentNoteMeta, ...updatedMeta };
+      currentNoteMeta = merged;
+
+      // 1. 即时存入 localStorage 缓存
       try {
-        const rawContent = currentNote.content || "";
-        const { frontmatter, body } = parseFrontmatter(rawContent);
+        localStorage.setItem("edgeever_wc_note_" + currentNote.id, JSON.stringify(merged));
+      } catch (_) {}
 
-        if (updatedMeta.url !== undefined) frontmatter.url = updatedMeta.url;
-        if (updatedMeta.title !== undefined) frontmatter.web_title = updatedMeta.title;
-        if (updatedMeta.defaultView !== undefined) frontmatter.default_view = updatedMeta.defaultView;
-        if (updatedMeta.splitRatio !== undefined) frontmatter.split_ratio = String(updatedMeta.splitRatio);
-
-        // 如果解绑清空 URL
-        if (!frontmatter.url) {
-          delete frontmatter.url;
-          delete frontmatter.web_title;
-          delete frontmatter.default_view;
-          delete frontmatter.split_ratio;
-        }
-
-        const newFullMarkdown = stringifyFrontmatter(frontmatter, body);
+      // 2. 存入笔记 Frontmatter
+      try {
+        const newFullMarkdown = updateMarkdownFrontmatter(currentNote.content, merged);
         currentNote.content = newFullMarkdown;
 
         if (context.notes?.update) {
@@ -264,26 +287,33 @@ export default {
       }
     }
 
-    // ==================== 6. 三模态控制台 (Topbar) 渲染 ====================
+    // ==================== 6. 顶栏 (Topbar) 精准挂载在编辑区内部 ====================
 
-    function renderTopbar() {
-      const container = findNoteEditorContainer();
-      if (!container) return;
+    function renderTopbar(contentEl) {
+      if (!contentEl || !contentEl.parentElement) return;
+      const parent = contentEl.parentElement;
+
+      // 确保父容器具备基础定位能力
+      if (getComputedStyle(parent).position === "static") {
+        parent.style.position = "relative";
+      }
 
       const hasUrl = Boolean(currentNoteMeta.url);
 
       if (!hasUrl) {
-        // 如果未关联网址，移除现有 topbar，仅在编辑区右上角提供一个极简关联按钮
         if (topbarEl) {
           topbarEl.remove();
           topbarEl = null;
         }
-        renderBindTrigger();
+        renderBindTrigger(parent, contentEl);
         return;
       }
 
-      // 移除未关联触发按钮
-      removeBindTrigger();
+      // 已有关联 URL，移除未关联触发按钮
+      if (bindTriggerEl) {
+        bindTriggerEl.remove();
+        bindTriggerEl = null;
+      }
 
       if (!settings.showTopSwitchBar) {
         if (topbarEl) topbarEl.remove();
@@ -308,7 +338,7 @@ export default {
           }
           <div class="edgeever-wc-web-info">
             <span class="edgeever-wc-web-title" title="${escapeHtml(displayTitle)}">${escapeHtml(displayTitle)}</span>
-            <a class="edgeever-wc-web-url" href="${escapeHtml(currentNoteMeta.url)}" target="_blank" rel="noopener" title="${escapeHtml(currentNoteMeta.url)}">
+            <a class="edgeever-wc-web-url" href="${escapeHtml(currentNoteMeta.url)}" target="_blank" rel="noopener" title="在新标签页中打开">
               <span>${escapeHtml(domain)}</span>
               ${ICONS.external}
             </a>
@@ -316,7 +346,7 @@ export default {
         </div>
 
         <div class="edgeever-wc-segmented-control" role="tablist">
-          <button type="button" class="edgeever-wc-segment-btn ${activeViewMode === "note" ? "active" : ""}" data-view="note" title="笔记视图：纯净专注笔记文本">
+          <button type="button" class="edgeever-wc-segment-btn ${activeViewMode === "note" ? "active" : ""}" data-view="note" title="笔记视图：专注纯净笔记正文">
             ${ICONS.note} 笔记
           </button>
           <button type="button" class="edgeever-wc-segment-btn ${activeViewMode === "split" ? "active" : ""}" data-view="split" title="双屏编辑：左侧记笔记，右侧看网页">
@@ -342,7 +372,7 @@ export default {
         </div>
       `;
 
-      // 绑定视图切换事件
+      // 绑定分段视图切换事件
       topbarEl.querySelectorAll(".edgeever-wc-segment-btn").forEach((btn) => {
         btn.onclick = (e) => {
           e.stopPropagation();
@@ -351,7 +381,7 @@ export default {
         };
       });
 
-      // 绑定默认视图选择事件
+      // 绑定默认视图选择
       const selectEl = topbarEl.querySelector(".edgeever-wc-default-select");
       if (selectEl) {
         selectEl.onchange = async () => {
@@ -359,12 +389,12 @@ export default {
           currentNoteMeta.defaultView = newDef;
           await persistNoteMetadata({ defaultView: newDef });
           if (context.ui?.showNotice) {
-            context.ui.showNotice(`已设置下次打开此笔记时默认使用「${selectEl.options[selectEl.selectedIndex].text}」`, { type: "info" });
+            context.ui.showNotice(`已设置下次打开此笔记默认使用「${selectEl.options[selectEl.selectedIndex].text}」`, { type: "info" });
           }
         };
       }
 
-      // 绑定设置/解绑按钮
+      // 绑定网址管理模态框
       const manageBtn = topbarEl.querySelector(".edgeever-wc-btn-manage");
       if (manageBtn) {
         manageBtn.onclick = (e) => {
@@ -373,186 +403,80 @@ export default {
         };
       }
 
-      // 挂载到容器顶部最前端
-      if (container.firstChild !== topbarEl) {
-        container.insertBefore(topbarEl, container.firstChild);
+      // 正确挂载位置：位于内容元素之前（富文本工具栏下方、正文最上方）
+      if (topbarEl.nextSibling !== contentEl) {
+        parent.insertBefore(topbarEl, contentEl);
       }
     }
 
-    function renderBindTrigger() {
-      const contentEl = findNoteContentElement();
-      if (!contentEl) return;
+    function renderBindTrigger(parent, contentEl) {
+      if (bindTriggerEl && bindTriggerEl.isConnected) return;
 
-      let trigger = document.querySelector(".edgeever-wc-bind-trigger");
-      if (!trigger) {
-        trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.className = "edgeever-wc-bind-trigger";
-        trigger.innerHTML = `${ICONS.link} 关联网页`;
-        trigger.title = "为此笔记绑定参考网址，开启三模态对照浏览";
-        trigger.onclick = (e) => {
-          e.stopPropagation();
-          openUrlModal();
-        };
+      bindTriggerEl = document.createElement("button");
+      bindTriggerEl.type = "button";
+      bindTriggerEl.className = "edgeever-wc-bind-trigger";
+      bindTriggerEl.innerHTML = `${ICONS.link} 关联网页`;
+      bindTriggerEl.title = "为此笔记绑定参考网址，开启三模态对照浏览";
+      bindTriggerEl.onclick = (e) => {
+        e.stopPropagation();
+        openUrlModal();
+      };
 
-        contentEl.parentElement.insertBefore(trigger, contentEl);
-      }
+      parent.insertBefore(bindTriggerEl, contentEl);
     }
 
-    function removeBindTrigger() {
-      document.querySelectorAll(".edgeever-wc-bind-trigger").forEach((el) => el.remove());
-    }
+    // ==================== 7. 网页主视窗与双栏渲染引擎 ====================
 
-    // ==================== 7. 双屏分屏与网页视窗挂载 ====================
-
-    function setupSplitLayout() {
-      const container = findNoteEditorContainer();
-      if (!container) return;
+    function renderMainViews(contentEl) {
+      if (!contentEl || !contentEl.parentElement) return;
+      const parent = contentEl.parentElement;
 
       const hasUrl = Boolean(currentNoteMeta.url);
       if (!hasUrl) {
-        // 无关联 URL 时，彻底移除双栏分屏 DOM，保持纯净原生状态
-        teardownSplitLayout();
+        // 无关联 URL，恢复纯净原生编辑
+        contentEl.style.display = "";
+        contentEl.style.flex = "";
+        contentEl.style.maxWidth = "";
+        contentEl.style.width = "";
+        if (webPaneEl) webPaneEl.style.display = "none";
+        if (resizerEl) resizerEl.style.display = "none";
         return;
       }
 
-      const contentEl = findNoteContentElement();
-      if (!contentEl) return;
-
-      // 如果尚未建立 split 容器
-      if (!splitWrapperEl || !splitWrapperEl.isConnected) {
-        splitWrapperEl = document.createElement("div");
-        splitWrapperEl.className = `edgeever-wc-split-wrapper edgeever-wc-view-${activeViewMode}`;
-
-        // 创建左侧笔记包裹区
-        const notePane = document.createElement("div");
-        notePane.className = "edgeever-wc-note-pane";
-
-        // 创建中间拖拽条
-        resizerEl = document.createElement("div");
-        resizerEl.className = "edgeever-wc-resizer";
-        resizerEl.title = "左右拖拽调节分屏比例 (双击重置为 50:50)";
-
-        // 创建右侧网页视窗
+      // 1. 确保右侧网页面板挂载在 contentEl 的同级后方
+      if (!webPaneEl || !webPaneEl.isConnected) {
         webPaneEl = document.createElement("div");
         webPaneEl.className = "edgeever-wc-web-pane";
 
-        // 挂载顺序
-        splitWrapperEl.appendChild(notePane);
-        splitWrapperEl.appendChild(resizerEl);
-        splitWrapperEl.appendChild(webPaneEl);
+        // 创建分割拖拽条
+        resizerEl = document.createElement("div");
+        resizerEl.className = "edgeever-wc-resizer";
+        resizerEl.title = "拖拽调节左右分屏比例 (双击重置为 50:50)";
 
-        // 将原编辑正文移入 notePane
-        contentEl.parentElement.insertBefore(splitWrapperEl, contentEl);
-        notePane.appendChild(contentEl);
-
-        // 绑定拖拽逻辑
-        initResizerEvents();
-      }
-
-      // 更新类名
-      splitWrapperEl.className = `edgeever-wc-split-wrapper edgeever-wc-view-${activeViewMode}`;
-
-      // 设置分屏宽度
-      applySplitRatio(currentSplitRatio);
-
-      // 渲染右侧网页内容
-      renderWebPane();
-    }
-
-    function teardownSplitLayout() {
-      if (splitWrapperEl && splitWrapperEl.isConnected) {
-        const notePane = splitWrapperEl.querySelector(".edgeever-wc-note-pane");
-        const contentEl = findNoteContentElement();
-        if (contentEl && splitWrapperEl.parentElement) {
-          splitWrapperEl.parentElement.insertBefore(contentEl, splitWrapperEl);
-        }
-        splitWrapperEl.remove();
-        splitWrapperEl = null;
-        webPaneEl = null;
-        resizerEl = null;
-        iframeEl = null;
-      }
-    }
-
-    function applySplitRatio(ratio) {
-      if (!splitWrapperEl) return;
-      const notePane = splitWrapperEl.querySelector(".edgeever-wc-note-pane");
-      if (notePane) {
-        if (activeViewMode === "split") {
-          notePane.style.flex = `0 0 ${ratio}%`;
-          notePane.style.maxWidth = `${ratio}%`;
+        // 插入在 contentEl 之后
+        if (contentEl.nextSibling) {
+          parent.insertBefore(resizerEl, contentEl.nextSibling);
+          parent.insertBefore(webPaneEl, resizerEl.nextSibling);
         } else {
-          notePane.style.flex = "";
-          notePane.style.maxWidth = "";
+          parent.appendChild(resizerEl);
+          parent.appendChild(webPaneEl);
         }
+
+        initResizerEvents(contentEl, parent);
       }
+
+      // 2. 渲染网页面板内部控件与 iframe
+      buildWebPaneContent();
+
+      // 3. 应用三种视图的布局排版
+      applyViewModeLayout(contentEl, parent);
     }
 
-    function initResizerEvents() {
-      if (!resizerEl) return;
-
-      let isDragging = false;
-      let startX = 0;
-      let startNoteWidth = 0;
-      let containerWidth = 0;
-
-      resizerEl.ondblclick = (e) => {
-        e.preventDefault();
-        currentSplitRatio = 50;
-        applySplitRatio(50);
-        persistNoteMetadata({ splitRatio: 50 });
-      };
-
-      resizerEl.onmousedown = (e) => {
-        e.preventDefault();
-        isDragging = true;
-        startX = e.clientX;
-        const notePane = splitWrapperEl.querySelector(".edgeever-wc-note-pane");
-        startNoteWidth = notePane ? notePane.getBoundingClientRect().width : 0;
-        containerWidth = splitWrapperEl.getBoundingClientRect().width;
-
-        resizerEl.classList.add("is-dragging");
-        splitWrapperEl.classList.add("is-resizing");
-
-        const onMouseMove = (moveEvt) => {
-          if (!isDragging || containerWidth <= 0) return;
-          const deltaX = moveEvt.clientX - startX;
-          let newWidth = startNoteWidth + deltaX;
-          let newPercent = (newWidth / containerWidth) * 100;
-          newPercent = Math.max(20, Math.min(80, newPercent)); // 限制在 20% ~ 80%
-
-          currentSplitRatio = Math.round(newPercent);
-          applySplitRatio(currentSplitRatio);
-        };
-
-        const onMouseUp = () => {
-          if (!isDragging) return;
-          isDragging = false;
-          resizerEl.classList.remove("is-dragging");
-          splitWrapperEl.classList.remove("is-resizing");
-          window.removeEventListener("mousemove", onMouseMove);
-          window.removeEventListener("mouseup", onMouseUp);
-
-          // 持久化当前比例
-          persistNoteMetadata({ splitRatio: currentSplitRatio });
-        };
-
-        window.addEventListener("mousemove", onMouseMove);
-        window.addEventListener("mouseup", onMouseUp);
-      };
-    }
-
-    function renderWebPane() {
+    function buildWebPaneContent() {
       if (!webPaneEl) return;
-
       const url = currentNoteMeta.url;
-      if (!url) {
-        webPaneEl.innerHTML = "";
-        return;
-      }
 
-      // 如果 iframe 已经存在且 url 未变，避免反复刷新页面
+      // 如果已有 iframe 且网址未变，复用已有内容，避免重载
       if (iframeEl && iframeEl.dataset.loadedUrl === url) {
         return;
       }
@@ -568,9 +492,9 @@ export default {
             </a>
           </div>
 
-          <div class="edgeever-wc-url-bar" title="${escapeHtml(url)}">
+          <div class="edgeever-wc-url-bar" title="回车可重新加载网址">
             <span>🌐</span>
-            <input type="text" value="${escapeHtml(url)}" readonly />
+            <input type="text" class="edgeever-wc-nav-input" value="${escapeHtml(url)}" />
           </div>
 
           <div class="edgeever-wc-actions-group">
@@ -585,80 +509,162 @@ export default {
         </div>
 
         <div class="edgeever-wc-iframe-wrap">
-          <iframe class="edgeever-wc-iframe" src="${escapeHtml(url)}" sandbox="allow-same-origin allow-scripts allow-popups allow-forms" data-loaded-url="${escapeHtml(url)}"></iframe>
-          <div class="edgeever-wc-frame-guard">
-            <div class="edgeever-wc-guard-icon">${ICONS.shield}</div>
-            <div class="edgeever-wc-guard-title">此网站限制了嵌入预览</div>
-            <div class="edgeever-wc-guard-desc">
-              部分站点（如知乎、GitHub、各大网盘）设置了跨域同源保护 (X-Frame-Options)。你可以直接在外部浏览器中快速打开。
-            </div>
-            <div class="edgeever-wc-guard-actions">
-              <a class="edgeever-wc-btn edgeever-wc-btn-primary" href="${escapeHtml(url)}" target="_blank" rel="noopener">
-                在浏览器中打开 ↗
-              </a>
-              <button type="button" class="edgeever-wc-btn edgeever-wc-btn-secondary edgeever-wc-btn-copy-url">
-                复制链接
-              </button>
-            </div>
-          </div>
+          <iframe class="edgeever-wc-iframe" src="${escapeHtml(url)}" data-loaded-url="${escapeHtml(url)}" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
         </div>
       `;
 
       iframeEl = webPaneEl.querySelector(".edgeever-wc-iframe");
-      frameGuardEl = webPaneEl.querySelector(".edgeever-wc-frame-guard");
+
+      // 地址栏回车直达
+      const navInput = webPaneEl.querySelector(".edgeever-wc-nav-input");
+      if (navInput && iframeEl) {
+        navInput.onkeydown = (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            let newUrl = navInput.value.trim();
+            if (newUrl && !/^https?:\/\//i.test(newUrl)) newUrl = "https://" + newUrl;
+            if (newUrl) {
+              iframeEl.src = newUrl;
+              iframeEl.dataset.loadedUrl = newUrl;
+              persistNoteMetadata({ url: newUrl });
+            }
+          }
+        };
+      }
 
       // 刷新按钮
       const refreshBtn = webPaneEl.querySelector(".edgeever-wc-btn-refresh");
       if (refreshBtn && iframeEl) {
         refreshBtn.onclick = () => {
-          iframeEl.src = url;
+          iframeEl.src = iframeEl.src;
           if (context.ui?.showNotice) context.ui.showNotice("页面正在刷新...", { type: "info" });
         };
       }
 
-      // 复制链接按钮
-      const copyUrlBtn = webPaneEl.querySelector(".edgeever-wc-btn-copy-url");
-      if (copyUrlBtn) {
-        copyUrlBtn.onclick = () => {
-          navigator.clipboard?.writeText(url).then(() => {
-            if (context.ui?.showNotice) context.ui.showNotice("网址已复制到剪贴板！", { type: "success" });
-          });
-        };
-      }
-
-      // 一键摘录功能
+      // 一键摘录按钮
       const clipBtn = webPaneEl.querySelector(".edgeever-wc-btn-clip");
       if (clipBtn) {
         clipBtn.onclick = async () => {
-          await insertExcerptToNote(currentNoteMeta.title, url);
-        };
-      }
-
-      // 探测 iframe 加载状态
-      if (iframeEl) {
-        let loadTimeout = setTimeout(() => {
-          // 兜底超时提示（可自由切换）
-        }, 10000);
-
-        iframeEl.onload = () => {
-          clearTimeout(loadTimeout);
-        };
-
-        iframeEl.onerror = () => {
-          if (frameGuardEl) frameGuardEl.classList.add("show");
+          await insertExcerptToNote(currentNoteMeta.title, currentNoteMeta.url);
         };
       }
     }
 
-    // 将网页信息优雅摘录至笔记
+    function applyViewModeLayout(contentEl, parent) {
+      if (!contentEl || !webPaneEl) return;
+
+      if (activeViewMode === "note") {
+        // 1) 笔记视图：纯净笔记
+        parent.style.display = "";
+        parent.style.flexDirection = "";
+        contentEl.style.display = "";
+        contentEl.style.flex = "";
+        contentEl.style.maxWidth = "";
+        contentEl.style.width = "";
+        webPaneEl.style.display = "none";
+        if (resizerEl) resizerEl.style.display = "none";
+      } else if (activeViewMode === "web") {
+        // 2) 网页视图：全屏显示网页，隐藏笔记正文
+        parent.style.display = "";
+        contentEl.style.display = "none";
+        if (resizerEl) resizerEl.style.display = "none";
+
+        webPaneEl.style.display = "flex";
+        webPaneEl.style.width = "100%";
+        webPaneEl.style.height = "calc(100vh - 160px)";
+        webPaneEl.style.minHeight = "520px";
+        webPaneEl.style.borderLeft = "none";
+        webPaneEl.style.borderRadius = "var(--wc-radius)";
+      } else if (activeViewMode === "split") {
+        // 3) 双屏对照模式：左侧笔记 + 右侧网页
+        parent.style.display = "flex";
+        parent.style.flexDirection = "row";
+        parent.style.alignItems = "stretch";
+        parent.style.boxSizing = "border-box";
+
+        const ratio = currentSplitRatio || 50;
+
+        contentEl.style.display = "";
+        contentEl.style.flex = `0 0 ${ratio}%`;
+        contentEl.style.maxWidth = `${ratio}%`;
+        contentEl.style.width = `${ratio}%`;
+        contentEl.style.boxSizing = "border-box";
+        contentEl.style.overflowY = "auto";
+
+        if (resizerEl) resizerEl.style.display = "block";
+
+        webPaneEl.style.display = "flex";
+        webPaneEl.style.flex = "1";
+        webPaneEl.style.width = `calc(${100 - ratio}% - 6px)`;
+        webPaneEl.style.height = "calc(100vh - 160px)";
+        webPaneEl.style.minHeight = "520px";
+        webPaneEl.style.borderLeft = "1px solid var(--wc-border)";
+      }
+    }
+
+    function initResizerEvents(contentEl, parent) {
+      if (!resizerEl) return;
+
+      let isDragging = false;
+      let startX = 0;
+      let startNoteWidth = 0;
+      let containerWidth = 0;
+
+      resizerEl.ondblclick = (e) => {
+        e.preventDefault();
+        currentSplitRatio = 50;
+        applyViewModeLayout(contentEl, parent);
+        persistNoteMetadata({ splitRatio: 50 });
+      };
+
+      resizerEl.onmousedown = (e) => {
+        e.preventDefault();
+        isDragging = true;
+        startX = e.clientX;
+        startNoteWidth = contentEl.getBoundingClientRect().width;
+        containerWidth = parent.getBoundingClientRect().width;
+
+        resizerEl.classList.add("is-dragging");
+
+        // 防止拖拽中 iframe 截获 mousemove
+        if (iframeEl) iframeEl.style.pointerEvents = "none";
+
+        const onMouseMove = (moveEvt) => {
+          if (!isDragging || containerWidth <= 0) return;
+          const deltaX = moveEvt.clientX - startX;
+          let newWidth = startNoteWidth + deltaX;
+          let newPercent = (newWidth / containerWidth) * 100;
+          newPercent = Math.max(20, Math.min(80, newPercent)); // 限制在 20% ~ 80%
+
+          currentSplitRatio = Math.round(newPercent);
+          applyViewModeLayout(contentEl, parent);
+        };
+
+        const onMouseUp = () => {
+          if (!isDragging) return;
+          isDragging = false;
+          resizerEl.classList.remove("is-dragging");
+          if (iframeEl) iframeEl.style.pointerEvents = "auto";
+
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+
+          persistNoteMetadata({ splitRatio: currentSplitRatio });
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+      };
+    }
+
+    // 网页信息一键摘录到笔记
     async function insertExcerptToNote(title, url) {
       if (!currentNote?.id) return;
       const domain = extractDomain(url);
-      const excerptMd = `\n> 🌐 **参考网页**：[${title || domain}](${url})\n> 📅 **摘录时间**：${new Date().toLocaleString("zh-CN")}\n\n`;
+      const excerptMd = `\n> 🌐 **参考来源**：[${title || domain}](${url})\n> 📅 **记录时间**：${new Date().toLocaleString("zh-CN")}\n\n`;
 
       try {
         let inserted = false;
-        // 尝试通过 ProseMirror / TipTap 编辑器事务无缝插入
         const pm = document.querySelector(".ProseMirror");
         let editor = pm?.pmViewDesc?.view?.editor;
         if (editor?.commands) {
@@ -667,7 +673,6 @@ export default {
         }
 
         if (!inserted) {
-          // 兜底追加到笔记末尾
           const fullContent = (currentNote.content || "") + excerptMd;
           currentNote.content = fullContent;
           if (context.notes?.update) {
@@ -686,7 +691,7 @@ export default {
       }
     }
 
-    // ==================== 8. 视图模式切换状态机 ====================
+    // ==================== 8. 视图模式切换控制 ====================
 
     function switchViewMode(targetMode) {
       if (!["note", "web", "split"].includes(targetMode)) targetMode = "note";
@@ -698,13 +703,13 @@ export default {
         });
       }
 
-      if (splitWrapperEl) {
-        splitWrapperEl.className = `edgeever-wc-split-wrapper edgeever-wc-view-${activeViewMode}`;
-        applySplitRatio(currentSplitRatio);
+      const contentEl = findNoteContentElement();
+      if (contentEl) {
+        renderMainViews(contentEl);
       }
     }
 
-    // ==================== 9. 关联网址对话框 (Modal) ====================
+    // ==================== 9. 关联网址模态对话框 (Modal) ====================
 
     async function openUrlModal() {
       closeUrlModal();
@@ -713,7 +718,7 @@ export default {
       let initialTitle = currentNoteMeta.title || "";
       let initialDefaultView = currentNoteMeta.defaultView || settings.defaultViewMode || "note";
 
-      // 如果当前为空，尝试自动探测剪贴板
+      // 自动感知剪贴板
       if (!initialUrl && navigator.clipboard?.readText) {
         try {
           const clipText = await navigator.clipboard.readText();
@@ -742,8 +747,8 @@ export default {
           </div>
 
           <div class="edgeever-wc-form-group">
-            <label class="edgeever-wc-form-label">网页标题 (可选，留空将自动使用域名)</label>
-            <input type="text" class="edgeever-wc-form-input edgeever-wc-input-title" placeholder="如：React 官方中文文档" value="${escapeHtml(initialTitle)}" />
+            <label class="edgeever-wc-form-label">网页标题 (可选，留空将自动提取域名)</label>
+            <input type="text" class="edgeever-wc-form-input edgeever-wc-input-title" placeholder="如：硬核指南-网站导航" value="${escapeHtml(initialTitle)}" />
           </div>
 
           <div class="edgeever-wc-form-group">
@@ -758,7 +763,7 @@ export default {
           <div class="edgeever-wc-modal-footer">
             ${
               currentNoteMeta.url
-                ? `<button type="button" class="edgeever-wc-btn edgeever-wc-btn-secondary edgeever-wc-btn-unbind" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">
+                ? `<button type="button" class="edgeever-wc-btn edgeever-wc-btn-secondary edgeever-wc-btn-unbind" style="color:#f87171;border-color:rgba(239,68,68,0.3)">
                      解绑并恢复普通笔记
                    </button>`
                 : `<span></span>`
@@ -794,7 +799,7 @@ export default {
         if (e.target === modalEl) doClose();
       };
 
-      // 提交保存
+      // 保存绑定
       confirmBtn.onclick = async () => {
         let enteredUrl = (urlInput.value || "").trim();
         if (!enteredUrl) {
@@ -829,7 +834,7 @@ export default {
         }
       };
 
-      // 解绑
+      // 解绑恢复
       if (unbindBtn) {
         unbindBtn.onclick = async () => {
           currentNoteMeta.url = "";
@@ -839,8 +844,7 @@ export default {
           await persistNoteMetadata({ url: "" });
           doClose();
           switchViewMode("note");
-          teardownSplitLayout();
-          renderTopbar();
+          refreshComponentState();
 
           if (context.ui?.showNotice) {
             context.ui.showNotice("已解绑网页，该笔记已恢复为纯普通笔记。", { type: "info" });
@@ -868,15 +872,15 @@ export default {
         const isNoteChanged = !currentNote || currentNote.id !== note.id;
         currentNote = note;
 
-        // 解析 Frontmatter
-        const { frontmatter } = parseFrontmatter(note.content);
+        // 全面嗅探 URL
+        const parsed = extractUrlAndMeta(note.content, note.id);
         const prevUrl = currentNoteMeta.url;
 
         currentNoteMeta = {
-          url: frontmatter.url || "",
-          title: frontmatter.web_title || (frontmatter.url ? extractDomain(frontmatter.url) : ""),
-          defaultView: frontmatter.default_view || settings.defaultViewMode || "note",
-          splitRatio: Number(frontmatter.split_ratio) || Number(settings.defaultSplitRatio) || 50,
+          url: parsed.url,
+          title: parsed.title || (parsed.url ? extractDomain(parsed.url) : ""),
+          defaultView: parsed.defaultView || settings.defaultViewMode || "note",
+          splitRatio: parsed.splitRatio || Number(settings.defaultSplitRatio) || 50,
         };
 
         // 如果切换了笔记，按该笔记配置的默认视图初始化
@@ -885,14 +889,17 @@ export default {
           currentSplitRatio = currentNoteMeta.splitRatio;
         }
 
-        renderTopbar();
-        setupSplitLayout();
+        const contentEl = findNoteContentElement();
+        if (contentEl) {
+          renderTopbar(contentEl);
+          renderMainViews(contentEl);
+        }
       } finally {
         isInternalMutating = false;
       }
     }
 
-    // 智能监听 DOM 变化（排除插件自身变动，杜绝闪烁）
+    // 智能监听 DOM 变动（避免自身死循环）
     let debounceTimer = null;
     const observer = new MutationObserver((mutations) => {
       if (isInternalMutating) return;
@@ -902,7 +909,7 @@ export default {
         if (!target || !target.closest) return true;
         if (
           target.closest(
-            ".edgeever-wc-topbar, .edgeever-wc-split-wrapper, .edgeever-wc-modal-backdrop, .edgeever-wc-bind-trigger"
+            ".edgeever-wc-topbar, .edgeever-wc-web-pane, .edgeever-wc-resizer, .edgeever-wc-modal-backdrop, .edgeever-wc-bind-trigger"
           )
         ) {
           return false;
@@ -961,14 +968,17 @@ export default {
   },
 
   deactivate() {
-    document.querySelectorAll(".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-modal-backdrop").forEach((el) => el.remove());
-    const splitWrapper = document.querySelector(".edgeever-wc-split-wrapper");
-    if (splitWrapper) {
-      const content = splitWrapper.querySelector(".ProseMirror, .milkdown, article, .editor-content");
-      if (content && splitWrapper.parentElement) {
-        splitWrapper.parentElement.insertBefore(content, splitWrapper);
+    document.querySelectorAll(".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-modal-backdrop, .edgeever-wc-web-pane, .edgeever-wc-resizer").forEach((el) => el.remove());
+    const content = document.querySelector(".ProseMirror, .milkdown, article, .editor-content");
+    if (content) {
+      content.style.display = "";
+      content.style.flex = "";
+      content.style.maxWidth = "";
+      content.style.width = "";
+      if (content.parentElement) {
+        content.parentElement.style.display = "";
+        content.parentElement.style.flexDirection = "";
       }
-      splitWrapper.remove();
     }
   },
 };
