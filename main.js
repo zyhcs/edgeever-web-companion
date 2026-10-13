@@ -1,11 +1,11 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.3.0 - 笔记内嵌全功能 Mini 浏览器：交互式地址栏、自适应全宽、防白屏容灾与高度自由伸缩
+ * v1.3.1 - 彻底根除白屏：智能防嵌站点拦截、优雅深色直达卡片、自适应全宽与交互式地址栏
  */
 
 console.log(
-  "%c[EdgeEver Web Companion] v1.3.0 Loaded - Embedded Mini Browser Experience",
+  "%c[EdgeEver Web Companion] v1.3.1 Loaded - Zero-Blank Guard & Smart Frame Security",
   "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
 );
 
@@ -340,6 +340,25 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+// 检查是否为已知被全局严格禁止 iframe 嵌入的网站 (X-Frame-Options: DENY)
+function isKnownFrameDeniedHost(urlStr) {
+  try {
+    const host = new URL(urlStr).hostname.toLowerCase();
+    return (
+      host.endsWith("github.com") ||
+      host.endsWith("google.com") ||
+      host.endsWith("google.cn") ||
+      host.endsWith("youtube.com") ||
+      host.endsWith("bilibili.com") ||
+      host.endsWith("twitter.com") ||
+      host.endsWith("x.com") ||
+      host.endsWith("zhihu.com")
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 let pluginContext = null;
 
 function getEditorInstance() {
@@ -355,7 +374,7 @@ function getEditorInstance() {
   return null;
 }
 
-// ==================== 3. 智能网络穿透引擎 (官方 network.fetch 规范) ====================
+// ==================== 3. 智能网络穿透与防白屏加载引擎 ====================
 
 async function fetchPublicHtml(url, maxRedirects = 3) {
   if (!pluginContext?.network?.fetch) return null;
@@ -404,9 +423,20 @@ async function fetchPublicHtml(url, maxRedirects = 3) {
 
 async function loadUrlIntoIframe(card, iframe, url, loadingBar) {
   if (loadingBar) loadingBar.style.display = "block";
-  let loaded = false;
+  const fallbackPane = card.querySelector(".edgeever-web-fallback-pane");
 
-  // 1. 优先通过 EdgeEver 官方后台 Public Network 拉取（无 CORS 限制，Node 直达）
+  // 1. 针对已知强制防嵌站点（如 GitHub、Google 等）：
+  // 坚决不使用原生 iframe 加载，彻底消灭 Chromium 渲染的纯白色白板！
+  if (isKnownFrameDeniedHost(url)) {
+    iframe.style.display = "none";
+    if (fallbackPane) fallbackPane.style.display = "flex";
+    if (loadingBar) {
+      setTimeout(() => { loadingBar.style.display = "none"; }, 200);
+    }
+    return;
+  }
+
+  // 2. 尝试后台网络穿透拉取并清洗 CSP
   const fetched = await fetchPublicHtml(url);
   if (fetched) {
     let { html, finalUrl } = fetched;
@@ -427,19 +457,19 @@ async function loadUrlIntoIframe(card, iframe, url, loadingBar) {
 
     iframe.removeAttribute("src");
     iframe.srcdoc = html;
-    loaded = true;
+    iframe.style.display = "block";
     if (loadingBar) {
       setTimeout(() => { loadingBar.style.display = "none"; }, 300);
     }
     return;
   }
 
-  // 2. 原生 iframe.src 加载
+  // 3. 原生 iframe 加载（带安全沙箱与零白屏监控）
   iframe.removeAttribute("srcdoc");
   iframe.src = url;
+  iframe.style.display = "block";
 
   iframe.onload = () => {
-    loaded = true;
     if (loadingBar) loadingBar.style.display = "none";
   };
 
@@ -583,7 +613,7 @@ function mountWebCompanionCard(container, embedData) {
   let initialTitle = "";
   let embedId = "";
   let initialHeight = 720;
-  let initialWidthMode = "editor"; // 默认自适应铺满主编辑器区
+  let initialWidthMode = "editor"; // 统一默认直接使用全宽
 
   if (typeof embedData === "string") {
     initialUrl = embedData;
@@ -616,7 +646,7 @@ function mountWebCompanionCard(container, embedData) {
 
   let currentTitle = initialTitle || domain;
   let currentHeight = initialHeight;
-  let currentWidthMode = initialWidthMode;
+  let currentWidthMode = initialWidthMode || "editor";
 
   container.innerHTML = "";
   const card = document.createElement("div");
@@ -624,9 +654,9 @@ function mountWebCompanionCard(container, embedData) {
   card.setAttribute("contenteditable", "false");
 
   function getWidthLabel(mode) {
-    if (mode === "editor") return "📐 全宽";
-    if (mode === "wide") return "📏 宽屏";
-    return "📝 标准";
+    if (mode === "editor") return "📐 铺满编辑区";
+    if (mode === "wide") return "📏 宽屏(980px)";
+    return "📝 标准正文宽";
   }
 
   function renderCardContent() {
@@ -641,14 +671,14 @@ function mountWebCompanionCard(container, embedData) {
         </div>
 
         <!-- 浏览器中央交互式地址栏 (Omnibox)：可直接在输入框里修改网址按回车前往并自动保存！ -->
-        <div class="edgeever-web-omnibox-wrap" title="输入网址并按回车即可前往该网页">
+        <div class="edgeever-web-omnibox-wrap" title="直接在此输入新网址并按回车前往">
           <span class="edgeever-web-lock-icon">🔒</span>
           <input type="text" class="edgeever-web-omnibox-input" value="${escapeHtml(currentUrl)}" placeholder="输入网址按回车前往 (https://...)" spellcheck="false" />
         </div>
 
         <!-- 浏览器右侧工具：宽度切换、在外部浏览器打开、复制链接、全屏 -->
         <div class="edgeever-web-embed-actions">
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：全宽 / 宽屏(980px) / 标准宽">${getWidthLabel(currentWidthMode)}</button>
+          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：铺满编辑区 / 宽屏 / 标准正文宽">${getWidthLabel(currentWidthMode)}</button>
           <a class="edgeever-web-btn-icon edgeever-web-btn-primary edgeever-web-action-link" href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" title="在系统独立浏览器中打开当前网页">🚀 外部打开</a>
           <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-copy" title="复制当前网址链接">📋 复制</button>
           <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-full" title="沉浸式整页铺满切换">⛶ 铺满</button>
@@ -667,10 +697,10 @@ function mountWebCompanionCard(container, embedData) {
             ${escapeHtml(currentTitle)}
           </div>
           <div style="font-size:12px;color:#94a3b8;max-width:460px;line-height:1.6;margin-bottom:20px;">
-            若此网站配置了严格的安全防嵌策略 (CSP: frame-ancestors)，可在上方地址栏修改网址，或直接在系统独立浏览器中畅快浏览：
+            由于此网站配置了严格的防嵌安全策略 (X-Frame-Options: DENY)，禁止在内嵌框架中直接运行。可在上方地址栏输入其他网址，或一键在系统独立浏览器中打开：
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
-            <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;padding:8px 18px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(56,189,248,0.35);">
+            <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(56,189,248,0.35);">
               🚀 立即在系统浏览器中打开
             </a>
             <button type="button" class="edgeever-web-btn-icon edgeever-web-fallback-copy" style="padding:7px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#cbd5e1;font-size:12px;cursor:pointer;">
@@ -1191,7 +1221,7 @@ export default {
       });
     }
 
-    console.log("[Web Companion] v1.3.0 initialized successfully.");
+    console.log("[Web Companion] v1.3.1 initialized successfully.");
   },
 
   deactivate() {
