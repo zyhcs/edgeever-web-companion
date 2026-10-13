@@ -1,14 +1,14 @@
 /**
  * EdgeEver Web Companion (网页伴侣)
- * /web 网页内嵌与 iframe 沉浸式浏览套件
- * v1.2.1 - 自适应编辑器全宽 (Editor Breakout) 与自由高度伸缩持久化
+ * 笔记内嵌全功能 Mini 浏览器套件
+ * v1.3.0 - 像在浏览器中一样浏览：交互式地址栏、自适应全宽、防白屏容灾与高度自由伸缩
  */
 
 :root {
-  --wc-bg: #13161c;
-  --wc-bar-bg: rgba(22, 26, 33, 0.9);
+  --wc-bg: #0f1217;
+  --wc-chrome-bg: rgba(22, 27, 34, 0.96);
   --wc-border: rgba(255, 255, 255, 0.08);
-  --wc-border-hover: rgba(56, 189, 248, 0.25);
+  --wc-border-hover: rgba(56, 189, 248, 0.28);
   --wc-text: #e2e8f0;
   --wc-text-muted: #94a3b8;
   --wc-accent: #38bdf8;
@@ -16,118 +16,106 @@
   --wc-radius: 10px;
 }
 
-/* 内嵌卡片主体容器 */
+/* 浏览器外壳主体 */
 .edgeever-web-embed-block {
   display: block !important;
   width: 100% !important;
-  margin: 16px 0 !important;
+  margin: 18px 0 !important;
   border-radius: var(--wc-radius) !important;
   border: 1px solid var(--wc-border) !important;
   background: var(--wc-bg) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.15s ease, margin 0.15s ease !important;
+  user-select: none !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease, margin 0.2s ease !important;
   position: relative !important;
 }
 
 .edgeever-web-embed-block:hover {
   border-color: var(--wc-border-hover) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55) !important;
 }
 
-/* 沉浸式铺满整页视图 */
-.edgeever-web-embed-block.is-fullscreen-view {
-  position: fixed !important;
-  top: 40px !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: calc(100vh - 40px) !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  z-index: 9999 !important;
-}
-
-.edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
-  height: calc(100% - 48px) !important;
-  min-height: unset !important;
-}
-
-/* Mac 极简顶栏 */
+/* 浏览器顶栏 Chrome Bar */
 .edgeever-web-embed-bar {
   display: flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: space-between !important;
-  height: 34px !important;
-  padding: 0 10px !important;
-  background: var(--wc-bar-bg) !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+  background: var(--wc-chrome-bg) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-  gap: 8px !important;
-  user-select: none !important;
+  gap: 10px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
   box-sizing: border-box !important;
 }
 
-.edgeever-web-embed-left {
+.edgeever-web-mac-controls {
   display: flex !important;
   align-items: center !important;
-  gap: 7px !important;
-  min-width: 0 !important;
-  cursor: pointer !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
 }
 
-.edgeever-web-tag {
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  padding: 1.5px 5px !important;
-  background: rgba(56, 189, 248, 0.15) !important;
-  color: var(--wc-accent) !important;
-  border-radius: 3px !important;
-  letter-spacing: 0.5px !important;
-  white-space: nowrap !important;
-  line-height: 1 !important;
+.edgeever-web-dot {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+  opacity: 0.8 !important;
 }
 
-.edgeever-web-title-wrap {
+.edgeever-web-dot.red { background: #ff5f56 !important; }
+.edgeever-web-dot.yellow { background: #ffbd2e !important; }
+.edgeever-web-dot.green { background: #27c93f !important; }
+
+/* 交互式地址栏 Omnibox */
+.edgeever-web-omnibox-wrap {
+  flex: 1 !important;
+  max-width: 640px !important;
+  min-width: 180px !important;
   display: flex !important;
   align-items: center !important;
-  gap: 4px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  transition: all 0.2s ease !important;
+  gap: 6px !important;
+}
+
+.edgeever-web-omnibox-wrap:focus-within {
+  border-color: #38bdf8 !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+}
+
+.edgeever-web-lock-icon {
+  font-size: 11px !important;
+  color: #38bdf8 !important;
+  opacity: 0.85 !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+}
+
+.edgeever-web-omnibox-input {
+  flex: 1 !important;
   min-width: 0 !important;
-  padding: 2px 5px !important;
-  border-radius: 4px !important;
-  transition: background 0.15s ease !important;
-}
-
-.edgeever-web-title-wrap:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.edgeever-web-domain-title {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
   font-size: 12px !important;
-  font-weight: 500 !important;
-  color: var(--wc-text) !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  max-width: 320px !important;
-  line-height: 1.2 !important;
+  color: #e2e8f0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+  padding: 2px 0 !important;
 }
 
-.edgeever-web-edit-hint {
-  font-size: 10.5px !important;
+.edgeever-web-omnibox-input::placeholder {
   color: #64748b !important;
-  opacity: 0 !important;
-  transition: opacity 0.15s ease !important;
-}
-
-.edgeever-web-title-wrap:hover .edgeever-web-edit-hint {
-  opacity: 1 !important;
-  color: var(--wc-accent) !important;
 }
 
 .edgeever-web-embed-actions {
@@ -144,11 +132,11 @@
   justify-content: center !important;
   gap: 3px !important;
   height: 24px !important;
-  padding: 0 6px !important;
+  padding: 0 7px !important;
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 4px !important;
-  color: var(--wc-text-muted) !important;
+  color: #94a3b8 !important;
   font-size: 11px !important;
   font-weight: 500 !important;
   cursor: pointer !important;
@@ -168,12 +156,12 @@
 .edgeever-web-btn-primary {
   background: rgba(56, 189, 248, 0.12) !important;
   border-color: rgba(56, 189, 248, 0.25) !important;
-  color: var(--wc-accent) !important;
+  color: #38bdf8 !important;
 }
 
 .edgeever-web-btn-primary:hover {
-  background: var(--wc-accent) !important;
-  border-color: var(--wc-accent) !important;
+  background: #38bdf8 !important;
+  border-color: #38bdf8 !important;
   color: #ffffff !important;
 }
 
@@ -182,7 +170,7 @@
   width: 100% !important;
   min-height: 320px !important;
   position: relative !important;
-  background: #101318 !important;
+  background: #0f1217 !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
 }
@@ -194,6 +182,25 @@
   display: block !important;
   background: transparent !important;
   box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.edgeever-web-loading-bar {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2.5px !important;
+  background: #38bdf8 !important;
+  animation: eeWcLoading 1.2s infinite ease-in-out !important;
+  z-index: 10 !important;
+}
+
+@keyframes eeWcLoading {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0); }
+  100% { transform: translateX(100%); }
 }
 
 /* 底部 Mac 风格拖拽伸缩手柄 */
@@ -201,7 +208,7 @@
   height: 14px !important;
   width: 100% !important;
   background: rgba(255, 255, 255, 0.02) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   cursor: row-resize !important;
   display: flex !important;
   align-items: center !important;
@@ -220,14 +227,14 @@
 .edgeever-web-resize-pill {
   width: 36px !important;
   height: 3px !important;
-  background: rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
   border-radius: 2px !important;
   transition: all 0.15s ease !important;
 }
 
 .edgeever-web-resize-bar:hover .edgeever-web-resize-pill,
 .edgeever-web-resize-bar.is-dragging .edgeever-web-resize-pill {
-  background: var(--wc-accent) !important;
+  background: #38bdf8 !important;
   width: 48px !important;
 }
 
@@ -235,7 +242,7 @@
   position: absolute !important;
   right: 12px !important;
   font-size: 10px !important;
-  color: var(--wc-text-muted) !important;
+  color: #94a3b8 !important;
   font-family: monospace !important;
   pointer-events: none !important;
   opacity: 0;
@@ -247,7 +254,25 @@
   opacity: 1 !important;
 }
 
-/* 模态弹窗 */
+/* 沉浸式铺满整页视图 */
+.edgeever-web-embed-block.is-fullscreen-view {
+  position: fixed !important;
+  top: 40px !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: calc(100vh - 40px) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  z-index: 9999 !important;
+}
+
+.edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
+  height: calc(100% - 52px) !important;
+  min-height: unset !important;
+}
+
 .edgeever-web-modal-backdrop {
   position: fixed !important;
   top: 0 !important;
@@ -272,6 +297,6 @@
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
   padding: 18px 20px !important;
   box-sizing: border-box !important;
-  color: var(--wc-text) !important;
+  color: #e2e8f0 !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
 }

@@ -1,11 +1,11 @@
 /**
  * EdgeEver Web Companion Plugin (网页伴侣)
  * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.2.3 - 核心网络穿透机制深度修复，彻底根除白屏，稳定全宽与高度自由伸缩
+ * v1.3.0 - 笔记内嵌全功能 Mini 浏览器：交互式地址栏、自适应全宽、防白屏容灾与高度自由伸缩
  */
 
 console.log(
-  "%c[EdgeEver Web Companion] v1.2.3 Loaded - Network Penetration Restored & Zero-Blank Guard",
+  "%c[EdgeEver Web Companion] v1.3.0 Loaded - Embedded Mini Browser Experience",
   "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
 );
 
@@ -29,11 +29,11 @@ const INJECTED_CSS = `
 .edgeever-web-embed-block {
   display: block !important;
   width: 100% !important;
-  margin: 16px 0 !important;
+  margin: 18px 0 !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 10px !important;
-  background: #11141a !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  background: #0f1217 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
   user-select: none !important;
@@ -42,8 +42,8 @@ const INJECTED_CSS = `
 }
 
 .edgeever-web-embed-block:hover {
-  border-color: rgba(56, 189, 248, 0.25) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5) !important;
+  border-color: rgba(56, 189, 248, 0.28) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55) !important;
 }
 
 .edgeever-web-embed-bar {
@@ -51,72 +51,79 @@ const INJECTED_CSS = `
   flex-direction: row !important;
   align-items: center !important;
   justify-content: space-between !important;
-  height: 34px !important;
-  padding: 0 10px !important;
-  background: rgba(20, 24, 31, 0.95) !important;
+  height: 38px !important;
+  padding: 0 12px !important;
+  background: rgba(22, 27, 34, 0.96) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
-  gap: 8px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  gap: 10px !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
   box-sizing: border-box !important;
 }
 
-.edgeever-web-embed-left {
+.edgeever-web-mac-controls {
   display: flex !important;
   align-items: center !important;
-  gap: 7px !important;
-  min-width: 0 !important;
-  cursor: pointer !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
 }
 
-.edgeever-web-tag {
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  padding: 1.5px 5px !important;
-  background: rgba(56, 189, 248, 0.15) !important;
+.edgeever-web-dot {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+  opacity: 0.8 !important;
+}
+
+.edgeever-web-dot.red { background: #ff5f56 !important; }
+.edgeever-web-dot.yellow { background: #ffbd2e !important; }
+.edgeever-web-dot.green { background: #27c93f !important; }
+
+/* 交互式地址栏 Omnibox */
+.edgeever-web-omnibox-wrap {
+  flex: 1 !important;
+  max-width: 640px !important;
+  min-width: 180px !important;
+  display: flex !important;
+  align-items: center !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  transition: all 0.2s ease !important;
+  gap: 6px !important;
+}
+
+.edgeever-web-omnibox-wrap:focus-within {
+  border-color: #38bdf8 !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+}
+
+.edgeever-web-lock-icon {
+  font-size: 11px !important;
   color: #38bdf8 !important;
-  border-radius: 3px !important;
-  letter-spacing: 0.5px !important;
-  white-space: nowrap !important;
-  line-height: 1 !important;
+  opacity: 0.85 !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
 }
 
-.edgeever-web-title-wrap {
-  display: flex !important;
-  align-items: center !important;
-  gap: 4px !important;
+.edgeever-web-omnibox-input {
+  flex: 1 !important;
   min-width: 0 !important;
-  padding: 2px 5px !important;
-  border-radius: 4px !important;
-  transition: background 0.15s ease !important;
-}
-
-.edgeever-web-title-wrap:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.edgeever-web-domain-title {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
   font-size: 12px !important;
-  font-weight: 500 !important;
   color: #e2e8f0 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  max-width: 320px !important;
-  line-height: 1.2 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+  padding: 2px 0 !important;
 }
 
-.edgeever-web-edit-hint {
-  font-size: 10.5px !important;
+.edgeever-web-omnibox-input::placeholder {
   color: #64748b !important;
-  opacity: 0 !important;
-  transition: opacity 0.15s ease !important;
-}
-
-.edgeever-web-title-wrap:hover .edgeever-web-edit-hint {
-  opacity: 1 !important;
-  color: #38bdf8 !important;
 }
 
 .edgeever-web-embed-actions {
@@ -133,7 +140,7 @@ const INJECTED_CSS = `
   justify-content: center !important;
   gap: 3px !important;
   height: 24px !important;
-  padding: 0 6px !important;
+  padding: 0 7px !important;
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 4px !important;
@@ -269,7 +276,7 @@ const INJECTED_CSS = `
 }
 
 .edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
-  height: calc(100% - 48px) !important;
+  height: calc(100% - 52px) !important;
   min-height: unset !important;
 }
 
@@ -348,7 +355,7 @@ function getEditorInstance() {
   return null;
 }
 
-// ==================== 3. 智能网络穿透引擎 (Restored Official Network Fetch) ====================
+// ==================== 3. 智能网络穿透引擎 (官方 network.fetch 规范) ====================
 
 async function fetchPublicHtml(url, maxRedirects = 3) {
   if (!pluginContext?.network?.fetch) return null;
@@ -569,148 +576,7 @@ function applyCardLayout(card, widthMode) {
   }
 }
 
-// ==================== 6. 网页卡片属性设置弹窗 ====================
-
-function openEmbedSettingsModal({ title, url, height, widthMode }, onSave) {
-  let modal = document.createElement("div");
-  modal.className = "edgeever-web-modal-backdrop";
-  modal.innerHTML = `
-    <div class="edgeever-web-modal">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <span style="font-weight:700;font-size:14px;color:#f8fafc;display:flex;align-items:center;gap:6px;">
-          ⚙️ 网页卡片属性设置
-        </span>
-        <button type="button" class="edgeever-web-modal-close" style="background:none;border:none;color:#94a3b8;font-size:17px;cursor:pointer;padding:0 4px;">✕</button>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block;font-size:11.5px;font-weight:500;color:#94a3b8;margin-bottom:5px;">卡片标题 (Title)</label>
-        <input type="text" class="edgeever-web-input-title" value="${escapeHtml(title)}" placeholder="自定义标题（默认显示网址）" style="width:100%;box-sizing:border-box;padding:7px 10px;background:#0f172a;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#f8fafc;font-size:12.5px;outline:none;" />
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block;font-size:11.5px;font-weight:500;color:#94a3b8;margin-bottom:5px;">目标网址 (URL)</label>
-        <input type="text" class="edgeever-web-input-url" value="${escapeHtml(url)}" placeholder="https://example.com" style="width:100%;box-sizing:border-box;padding:7px 10px;background:#0f172a;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#f8fafc;font-size:12.5px;outline:none;" />
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block;font-size:11.5px;font-weight:500;color:#94a3b8;margin-bottom:5px;">宽度显示模式</label>
-        <div style="display:flex;gap:6px;" class="edgeever-web-width-opts">
-          <button type="button" class="edgeever-web-width-btn" data-mode="editor" style="flex:1;padding:6px;background:${widthMode === 'editor' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'editor' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'editor' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">🌟 适应全宽</button>
-          <button type="button" class="edgeever-web-width-btn" data-mode="wide" style="flex:1;padding:6px;background:${widthMode === 'wide' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'wide' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'wide' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">📏 宽屏 (980px)</button>
-          <button type="button" class="edgeever-web-width-btn" data-mode="normal" style="flex:1;padding:6px;background:${widthMode === 'normal' ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)'};border:1px solid ${widthMode === 'normal' ? '#38bdf8' : 'rgba(255,255,255,0.1)'};border-radius:5px;color:${widthMode === 'normal' ? '#38bdf8' : '#cbd5e1'};font-size:11px;cursor:pointer;">📝 标准正文宽</button>
-        </div>
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-          <label style="font-size:11.5px;font-weight:500;color:#94a3b8;">视窗高度调节 (可在底部直接自由拖拽)</label>
-          <span style="font-size:11px;color:#38bdf8;font-family:monospace;" class="edgeever-web-h-display">${height}px</span>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-          <input type="number" class="edgeever-web-input-h" value="${height}" min="320" max="2500" step="50" style="width:90px;box-sizing:border-box;padding:6px 8px;background:#0f172a;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#f8fafc;font-size:12px;outline:none;" />
-          <span style="font-size:11px;color:#94a3b8;">px</span>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button type="button" class="edgeever-web-preset-h" data-height="550" style="padding:4px 9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;">550px</button>
-          <button type="button" class="edgeever-web-preset-h" data-height="720" style="padding:4px 9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;">720px (舒适)</button>
-          <button type="button" class="edgeever-web-preset-h" data-height="950" style="padding:4px 9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;">950px</button>
-          <button type="button" class="edgeever-web-preset-h" data-height="${Math.max(500, window.innerHeight - 180)}" style="padding:4px 9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:#cbd5e1;font-size:11px;cursor:pointer;">撑满屏幕高</button>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;gap:8px;">
-        <button type="button" class="edgeever-web-modal-cancel" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#e2e8f0;font-size:12px;cursor:pointer;">取消</button>
-        <button type="button" class="edgeever-web-modal-save" style="padding:6px 16px;background:#38bdf8;border:none;border-radius:5px;color:#ffffff;font-size:12px;font-weight:600;cursor:pointer;">保存更改</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  const titleInput = modal.querySelector(".edgeever-web-input-title");
-  const urlInput = modal.querySelector(".edgeever-web-input-url");
-  const hInput = modal.querySelector(".edgeever-web-input-h");
-  const hDisplay = modal.querySelector(".edgeever-web-h-display");
-  const closeBtn = modal.querySelector(".edgeever-web-modal-close");
-  const cancelBtn = modal.querySelector(".edgeever-web-modal-cancel");
-  const saveBtn = modal.querySelector(".edgeever-web-modal-save");
-
-  let selectedHeight = height;
-  let selectedWidthMode = widthMode || "editor";
-
-  // 宽度模式切换
-  modal.querySelectorAll(".edgeever-web-width-btn").forEach((btn) => {
-    btn.onclick = () => {
-      selectedWidthMode = btn.dataset.mode;
-      modal.querySelectorAll(".edgeever-web-width-btn").forEach((b) => {
-        const isCur = b.dataset.mode === selectedWidthMode;
-        b.style.background = isCur ? "rgba(56,189,248,0.2)" : "rgba(255,255,255,0.06)";
-        b.style.borderColor = isCur ? "#38bdf8" : "rgba(255,255,255,0.1)";
-        b.style.color = isCur ? "#38bdf8" : "#cbd5e1";
-      });
-    };
-  });
-
-  // 高度输入监听
-  hInput.oninput = () => {
-    const val = parseInt(hInput.value, 10);
-    if (val && val >= 200) {
-      selectedHeight = val;
-      hDisplay.textContent = `${val}px`;
-    }
-  };
-
-  // 高度预设点击
-  modal.querySelectorAll(".edgeever-web-preset-h").forEach((btn) => {
-    btn.onclick = () => {
-      selectedHeight = parseInt(btn.dataset.height, 10);
-      hInput.value = selectedHeight;
-      hDisplay.textContent = `${selectedHeight}px`;
-    };
-  });
-
-  const doClose = () => {
-    if (modal) {
-      modal.remove();
-      modal = null;
-    }
-  };
-
-  closeBtn.onclick = doClose;
-  cancelBtn.onclick = doClose;
-  modal.onclick = (e) => { if (e.target === modal) doClose(); };
-
-  saveBtn.onclick = () => {
-    const newRawUrl = urlInput.value.trim();
-    if (!newRawUrl) {
-      urlInput.focus();
-      return;
-    }
-    const finalNewUrl = sanitizeUrl(newRawUrl);
-    let finalTitle = titleInput.value.trim();
-    if (!finalTitle) {
-      try {
-        finalTitle = new URL(finalNewUrl).hostname || finalNewUrl;
-      } catch (_) {
-        finalTitle = finalNewUrl;
-      }
-    }
-    doClose();
-    if (onSave) {
-      onSave({
-        title: finalTitle,
-        url: finalNewUrl,
-        height: selectedHeight,
-        widthMode: selectedWidthMode,
-      });
-    }
-  };
-
-  setTimeout(() => titleInput?.focus(), 60);
-}
-
-// ==================== 7. 构建与挂载卡片 DOM ====================
+// ==================== 6. 构建与挂载卡片 DOM (Mini 浏览器视窗) ====================
 
 function mountWebCompanionCard(container, embedData) {
   let initialUrl = "";
@@ -766,52 +632,58 @@ function mountWebCompanionCard(container, embedData) {
   function renderCardContent() {
     card.innerHTML = `
       <div class="edgeever-web-embed-bar">
-        <div class="edgeever-web-embed-left" title="点击编辑网页标题与链接属性">
-          <span class="edgeever-web-tag">WEB</span>
-          <div class="edgeever-web-title-wrap">
-            <span class="edgeever-web-domain-title">${escapeHtml(currentTitle)}</span>
-            <span class="edgeever-web-edit-hint">✏️</span>
-          </div>
+        <!-- 浏览器左侧控件：Mac 三色小圆点 + 刷新按钮 -->
+        <div class="edgeever-web-mac-controls">
+          <span class="edgeever-web-dot red"></span>
+          <span class="edgeever-web-dot yellow"></span>
+          <span class="edgeever-web-dot green"></span>
+          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-reload" title="重新加载当前页面" style="margin-left:4px;">🔄</button>
         </div>
+
+        <!-- 浏览器中央交互式地址栏 (Omnibox)：可直接在输入框里修改网址按回车前往并自动保存！ -->
+        <div class="edgeever-web-omnibox-wrap" title="输入网址并按回车即可前往该网页">
+          <span class="edgeever-web-lock-icon">🔒</span>
+          <input type="text" class="edgeever-web-omnibox-input" value="${escapeHtml(currentUrl)}" placeholder="输入网址按回车前往 (https://...)" spellcheck="false" />
+        </div>
+
+        <!-- 浏览器右侧工具：宽度切换、在外部浏览器打开、复制链接、全屏 -->
         <div class="edgeever-web-embed-actions">
           <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：全宽 / 宽屏(980px) / 标准宽">${getWidthLabel(currentWidthMode)}</button>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-settings" title="属性设置：自定义标题、网址、宽度与高度">⚙️ 设置</button>
-          <a class="edgeever-web-btn-icon edgeever-web-btn-primary edgeever-web-action-link" href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" title="在系统独立浏览器中打开此页面">🚀 打开</a>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-reload" title="刷新页面">🔄 刷新</button>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-copy" title="复制网址">📋 复制</button>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-full" title="铺满整页切换">⛶ 铺满</button>
+          <a class="edgeever-web-btn-icon edgeever-web-btn-primary edgeever-web-action-link" href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" title="在系统独立浏览器中打开当前网页">🚀 外部打开</a>
+          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-copy" title="复制当前网址链接">📋 复制</button>
+          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-full" title="沉浸式整页铺满切换">⛶ 铺满</button>
         </div>
       </div>
+
       <div class="edgeever-web-iframe-container" style="height:${currentHeight}px;">
         <div class="edgeever-web-loading-bar"></div>
         
-        <!-- 底层自适应引导面板 (当外部站点开启CSP防嵌导致内嵌受阻时优雅呈现) -->
+        <!-- 底层浏览器式引导与防白屏容灾卡片 -->
         <div class="edgeever-web-fallback-pane" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:#0f1217;color:#e2e8f0;z-index:1;box-sizing:border-box;">
-          <div style="width:48px;height:48px;border-radius:12px;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:12px;">
+          <div style="width:52px;height:52px;border-radius:14px;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;">
             🌐
           </div>
-          <div style="font-size:15px;font-weight:700;color:#f8fafc;margin-bottom:6px;">
+          <div style="font-size:16px;font-weight:700;color:#f8fafc;margin-bottom:6px;">
             ${escapeHtml(currentTitle)}
           </div>
-          <div style="font-size:12px;color:#94a3b8;max-width:440px;line-height:1.6;margin-bottom:18px;">
-            若此站点配置了极严格的安全防嵌策略 (CSP: frame-ancestors)，已为您准备好一键直达系统浏览器通道：
+          <div style="font-size:12px;color:#94a3b8;max-width:460px;line-height:1.6;margin-bottom:20px;">
+            若此网站配置了严格的安全防嵌策略 (CSP: frame-ancestors)，可在上方地址栏修改网址，或直接在系统独立浏览器中畅快浏览：
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
-            <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;padding:7px 16px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;box-shadow:0 4px 12px rgba(56,189,248,0.3);">
-              🚀 立即在浏览器打开
+            <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;padding:8px 18px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(56,189,248,0.35);">
+              🚀 立即在系统浏览器中打开
             </a>
-            <button type="button" class="edgeever-web-btn-icon edgeever-web-fallback-copy" style="padding:6px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#cbd5e1;font-size:12px;cursor:pointer;">
+            <button type="button" class="edgeever-web-btn-icon edgeever-web-fallback-copy" style="padding:7px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#cbd5e1;font-size:12px;cursor:pointer;">
               📋 复制网址
-            </button>
-            <button type="button" class="edgeever-web-btn-icon edgeever-web-fallback-settings" style="padding:6px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#cbd5e1;font-size:12px;cursor:pointer;">
-              ⚙️ 更换网址
             </button>
           </div>
         </div>
 
         <!-- 顶层透明 iframe (支持内嵌的网站直接正常覆盖显示) -->
-        <iframe class="edgeever-web-iframe" style="position:relative;width:100%;height:100%;border:none;background:transparent;z-index:2;" allow="fullscreen" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"></iframe>
+        <iframe class="edgeever-web-iframe" style="position:relative;width:100%;height:100%;border:none;background:transparent;z-index:2;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads"></iframe>
       </div>
+
+      <!-- 底部 Mac 风格拖拽伸缩手柄 -->
       <div class="edgeever-web-resize-bar" title="按住自由拖拽调节视窗高度 · 双击在自适应屏幕与默认高度间切换">
         <div class="edgeever-web-resize-pill"></div>
         <span class="edgeever-web-height-badge">${currentHeight}px</span>
@@ -822,10 +694,8 @@ function mountWebCompanionCard(container, embedData) {
   }
 
   function bindCardEvents() {
-    const leftTitle = card.querySelector(".edgeever-web-embed-left");
+    const omnibox = card.querySelector(".edgeever-web-omnibox-input");
     const widthBtn = card.querySelector(".edgeever-web-btn-width");
-    const settingsBtn = card.querySelector(".edgeever-web-btn-settings");
-    const fallbackSettingsBtn = card.querySelector(".edgeever-web-fallback-settings");
     const reloadBtn = card.querySelector(".edgeever-web-btn-reload");
     const copyBtn = card.querySelector(".edgeever-web-btn-copy");
     const fallbackCopyBtn = card.querySelector(".edgeever-web-fallback-copy");
@@ -842,6 +712,52 @@ function mountWebCompanionCard(container, embedData) {
     // 加载当前 URL
     if (iframe) {
       loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
+    }
+
+    // 🌟 像浏览器一样：在地址栏输入新网址并按回车跳转！
+    if (omnibox) {
+      omnibox.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          const target = omnibox.value.trim();
+          if (!target) return;
+
+          const oldUrl = currentUrl;
+          currentUrl = sanitizeUrl(target);
+          omnibox.value = currentUrl;
+          try {
+            currentTitle = new URL(currentUrl).hostname || currentUrl;
+          } catch (_) {
+            currentTitle = currentUrl;
+          }
+
+          // 持久化保存到笔记文档
+          updateEmbedAttributesInDoc(embedId, oldUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
+
+          // 重新载入网页
+          if (iframe) {
+            loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
+          }
+          omnibox.blur();
+        } else if (e.key === "Escape") {
+          omnibox.value = currentUrl;
+          omnibox.blur();
+        }
+      };
+
+      // 点击地址栏全选网址
+      omnibox.onfocus = () => {
+        setTimeout(() => omnibox.select(), 50);
+      };
+    }
+
+    // 刷新按钮
+    if (reloadBtn) {
+      reloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (iframe) loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
+      };
     }
 
     // 快捷宽度模式切换
@@ -861,49 +777,7 @@ function mountWebCompanionCard(container, embedData) {
       };
     }
 
-    // 设置与修改属性逻辑
-    const handleOpenSettings = (e) => {
-      e?.stopPropagation();
-      openEmbedSettingsModal(
-        {
-          title: currentTitle,
-          url: currentUrl,
-          height: containerEl.offsetHeight,
-          widthMode: currentWidthMode,
-        },
-        ({ title: newTitle, url: newUrl, height: newHeight, widthMode: newWidthMode }) => {
-          const oldUrl = currentUrl;
-          currentTitle = newTitle;
-          currentUrl = newUrl;
-          currentHeight = newHeight;
-          currentWidthMode = newWidthMode;
-
-          if (containerEl) {
-            containerEl.style.height = `${currentHeight}px`;
-          }
-
-          applyCardLayout(card, currentWidthMode);
-
-          // 持久化保存到笔记文档
-          updateEmbedAttributesInDoc(embedId, oldUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
-
-          // 重新渲染当前卡片
-          renderCardContent();
-        }
-      );
-    };
-
-    if (leftTitle) leftTitle.onclick = handleOpenSettings;
-    if (settingsBtn) settingsBtn.onclick = handleOpenSettings;
-    if (fallbackSettingsBtn) fallbackSettingsBtn.onclick = handleOpenSettings;
-
-    if (reloadBtn) {
-      reloadBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (iframe) loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
-      };
-    }
-
+    // 复制网址
     const doCopy = async (btn) => {
       try {
         await navigator.clipboard.writeText(currentUrl);
@@ -927,6 +801,7 @@ function mountWebCompanionCard(container, embedData) {
       };
     }
 
+    // 沉浸整页铺满
     if (fullBtn) {
       fullBtn.onclick = (e) => {
         e.stopPropagation();
@@ -1049,7 +924,7 @@ function mountWebCompanionCard(container, embedData) {
   };
 }
 
-// ==================== 8. 插入网页输入弹窗 ====================
+// ==================== 7. 插入网页输入弹窗 ====================
 
 let insertModalEl = null;
 
@@ -1137,7 +1012,7 @@ function promptInsertWebUrl(onConfirmCallback) {
   };
 }
 
-// ==================== 9. 插件激活与核心生命周期 ====================
+// ==================== 8. 插件激活与核心生命周期 ====================
 
 export default {
   activate(context) {
@@ -1316,7 +1191,7 @@ export default {
       });
     }
 
-    console.log("[Web Companion] v1.2.3 initialized successfully.");
+    console.log("[Web Companion] v1.3.0 initialized successfully.");
   },
 
   deactivate() {
