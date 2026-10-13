@@ -2,7 +2,7 @@
   "type": "plugin",
   "id": "org.edgeever.plugins.web-companion",
   "name": "Web Companion: 笔记内嵌桌面真实浏览器视窗 (/web)",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "apiVersion": "2",
   "settingsUi": "host",
   "description": "True Electron Browser Kernel embed in notes. High-performance WebView with persistent session, full-featured Omnibox, breakout full-width layout, and zero-blank fallback.",

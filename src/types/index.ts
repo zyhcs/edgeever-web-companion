@@ -142,4 +142,12 @@ export interface EdgeEverPluginContext {
       }): void;
     };
   };
+  network?: {
+    fetch(url: string, init?: Record<string, unknown>): Promise<{
+      ok: boolean;
+      status: number;
+      text(): Promise<string>;
+      headers?: { get(key: string): string | null };
+    }>;
+  };
 }

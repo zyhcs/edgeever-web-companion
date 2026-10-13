@@ -1,6 +1,6 @@
 {
   "name": "edgeever-web-companion",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "EdgeEver 笔记内嵌真实浏览器伴侣：Electron WebView 优先、自适应全宽、全功能 Omnibox 与多模式容灾渲染",
   "main": "main.js",
   "type": "module",

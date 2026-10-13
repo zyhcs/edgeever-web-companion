@@ -20,6 +20,30 @@ function extractHostname(url, fallback = "Web View") {
     return fallback;
   }
 }
+function isKnownFrameDeniedHost(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const deniedList = [
+      "github.com",
+      "gist.github.com",
+      "google.com",
+      "www.google.com",
+      "youtube.com",
+      "www.youtube.com",
+      "twitter.com",
+      "x.com",
+      "facebook.com",
+      "www.facebook.com",
+      "instagram.com",
+      "www.instagram.com",
+      "notion.so",
+      "www.notion.so"
+    ];
+    return deniedList.some((denied) => host === denied || host.endsWith("." + denied));
+  } catch {
+    return false;
+  }
+}
 
 // src/services/EmbedStore.ts
 var EmbedStore = class {
@@ -221,185 +245,15 @@ var BrowserSession = class {
   }
 };
 
-// src/renderers/ElectronWebViewRenderer.ts
-var ElectronWebViewRenderer = class extends BaseBrowserRenderer {
-  webview = null;
-  isDestroyed = false;
-  constructor(initialUrl, initialTitle, events) {
-    super(initialUrl, initialTitle, events);
-  }
-  mount(parent) {
-    this.container = parent;
-    this.isDestroyed = false;
-    const webview = document.createElement("webview");
-    this.webview = webview;
-    webview.setAttribute("partition", BrowserSession.getPartition());
-    webview.setAttribute("allowpopups", "true");
-    webview.setAttribute("src", this._currentUrl);
-    webview.style.width = "100%";
-    webview.style.height = "100%";
-    webview.style.border = "none";
-    webview.style.outline = "none";
-    webview.style.display = "flex";
-    webview.style.background = "#0f172a";
-    this.bindEvents(webview);
-    parent.appendChild(webview);
-    this.setState("LOADING" /* LOADING */);
-  }
-  bindEvents(webview) {
-    const onStartLoading = () => {
-      if (this.isDestroyed) return;
-      this.setState("LOADING" /* LOADING */);
-    };
-    const onStopLoading = () => {
-      if (this.isDestroyed) return;
-      this.syncUrlAndTitle();
-      this.setState("SUCCESS" /* SUCCESS */);
-    };
-    const onFailLoad = (e) => {
-      if (this.isDestroyed) return;
-      const customEvent = e;
-      if (customEvent.errorCode === -3) {
-        return;
-      }
-      const desc = customEvent.errorDescription || `ErrorCode: ${customEvent.errorCode || "Unknown"}`;
-      this.setState("FAILED" /* FAILED */, desc);
-    };
-    const onDomReady = () => {
-      if (this.isDestroyed) return;
-      this.syncUrlAndTitle();
-      this.setState("SUCCESS" /* SUCCESS */);
-    };
-    const onNewWindow = (e) => {
-      const customEvent = e;
-      if (customEvent.url) {
-        if (typeof customEvent.preventDefault === "function") {
-          customEvent.preventDefault();
-        }
-        this.loadURL(customEvent.url);
-      }
-    };
-    const onNavigate = (e) => {
-      if (this.isDestroyed) return;
-      const customEvent = e;
-      if (customEvent.url) {
-        this.setUrl(customEvent.url);
-      }
-      this.syncUrlAndTitle();
-    };
-    webview.addEventListener("did-start-loading", onStartLoading);
-    webview.addEventListener("did-stop-loading", onStopLoading);
-    webview.addEventListener("did-fail-load", onFailLoad);
-    webview.addEventListener("dom-ready", onDomReady);
-    webview.addEventListener("new-window", onNewWindow);
-    webview.addEventListener("did-navigate", onNavigate);
-    webview.addEventListener("did-navigate-in-page", onNavigate);
-  }
-  syncUrlAndTitle() {
-    if (!this.webview || this.isDestroyed) return;
-    try {
-      if (typeof this.webview.getURL === "function") {
-        const currentUrl = this.webview.getURL();
-        if (currentUrl && !currentUrl.startsWith("about:blank")) {
-          this.setUrl(currentUrl);
-        }
-      }
-    } catch {
-    }
-    try {
-      if (typeof this.webview.getTitle === "function") {
-        const title = this.webview.getTitle();
-        if (title) {
-          this.setTitle(title);
-        }
-      }
-    } catch {
-    }
-  }
-  loadURL(url) {
-    if (!this.webview || this.isDestroyed) return;
-    this.setUrl(url);
-    this.setState("LOADING" /* LOADING */);
-    try {
-      if (typeof this.webview.loadURL === "function") {
-        this.webview.loadURL(url);
-      } else {
-        this.webview.src = url;
-      }
-    } catch {
-      this.webview.src = url;
-    }
-  }
-  reload() {
-    if (!this.webview || this.isDestroyed) return;
-    try {
-      this.setState("LOADING" /* LOADING */);
-      if (typeof this.webview.reload === "function") {
-        this.webview.reload();
-      } else {
-        this.webview.src = this._currentUrl;
-      }
-    } catch {
-      this.webview.src = this._currentUrl;
-    }
-  }
-  goBack() {
-    if (!this.webview || this.isDestroyed) return;
-    try {
-      if (this.canGoBack()) {
-        this.webview.goBack();
-      }
-    } catch {
-    }
-  }
-  goForward() {
-    if (!this.webview || this.isDestroyed) return;
-    try {
-      if (this.canGoForward()) {
-        this.webview.goForward();
-      }
-    } catch {
-    }
-  }
-  canGoBack() {
-    if (!this.webview || this.isDestroyed) return false;
-    try {
-      return typeof this.webview.canGoBack === "function" ? this.webview.canGoBack() : false;
-    } catch {
-      return false;
-    }
-  }
-  canGoForward() {
-    if (!this.webview || this.isDestroyed) return false;
-    try {
-      return typeof this.webview.canGoForward === "function" ? this.webview.canGoForward() : false;
-    } catch {
-      return false;
-    }
-  }
-  destroy() {
-    this.isDestroyed = true;
-    if (this.webview) {
-      try {
-        if (typeof this.webview.stop === "function") {
-          this.webview.stop();
-        }
-        this.webview.remove();
-      } catch {
-      }
-      this.webview = null;
-    }
-    this.container = null;
-  }
-};
-
 // src/renderers/IframeRenderer.ts
 var IframeRenderer = class extends BaseBrowserRenderer {
   iframe = null;
   isDestroyed = false;
   abortController = null;
-  constructor(initialUrl, initialTitle, events) {
+  networkFetch = null;
+  constructor(initialUrl, initialTitle, events, networkFetch) {
     super(initialUrl, initialTitle, events);
+    this.networkFetch = networkFetch || null;
   }
   mount(parent) {
     this.container = parent;
@@ -410,13 +264,16 @@ var IframeRenderer = class extends BaseBrowserRenderer {
       "sandbox",
       "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
     );
-    iframe.setAttribute("loading", "lazy");
+    iframe.setAttribute(
+      "allow",
+      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+    );
     iframe.style.width = "100%";
     iframe.style.height = "100%";
     iframe.style.border = "none";
     iframe.style.outline = "none";
     iframe.style.display = "block";
-    iframe.style.background = "#0f172a";
+    iframe.style.background = "transparent";
     parent.appendChild(iframe);
     this.loadWithFallback(this._currentUrl);
   }
@@ -450,75 +307,85 @@ var IframeRenderer = class extends BaseBrowserRenderer {
     this.abortController?.abort();
     this.abortController = new AbortController();
     this.setState("LOADING" /* LOADING */);
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      this.iframe.src = url;
-      this.setState("SUCCESS" /* SUCCESS */);
+    if (isKnownFrameDeniedHost(url)) {
+      this.iframe.style.display = "none";
+      this.setState(
+        "BLOCKED" /* BLOCKED */,
+        "\u6B64\u7F51\u7AD9\u5F00\u542F\u4E86\u5168\u5C40\u9632\u5D4C\u5B89\u5168\u7B56\u7565 (X-Frame-Options: DENY)\uFF0C\u7981\u6B62\u5728\u5185\u5D4C\u6846\u67B6\u4E2D\u76F4\u63A5\u8FD0\u884C\u3002"
+      );
       return;
     }
-    try {
-      const resp = await fetch(url, {
-        method: "GET",
-        mode: "cors",
-        signal: this.abortController.signal
-      });
-      const text = await resp.text();
-      const lowerText = text.toLowerCase();
-      if (lowerText.includes("cf-chl") || lowerText.includes("challenge-platform") || lowerText.includes("cloudflare ray id") || lowerText.includes("just a moment...")) {
-        this.setState(
-          "CLOUDFLARE_REQUIRED" /* CLOUDFLARE_REQUIRED */,
-          "\u68C0\u6D4B\u5230\u76EE\u6807\u7AD9\u70B9\u542F\u7528\u4E86 Cloudflare \u4EBA\u673A\u9A8C\u8BC1\u9632\u62A4\uFF0C\u8BF7\u5728 EdgeEver \u684C\u9762\u7248\u4E2D\u76F4\u63A5\u6D4F\u89C8\uFF01"
-        );
-        return;
+    if (this.networkFetch) {
+      try {
+        const resp = await this.networkFetch(url, {
+          transport: "public",
+          method: "GET",
+          headers: {
+            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          },
+          signal: this.abortController.signal
+        });
+        if (resp && resp.ok) {
+          const text = await resp.text();
+          if (text && text.length > 50) {
+            const lowerText = text.toLowerCase();
+            if (lowerText.includes("cf-chl") || lowerText.includes("challenge-platform") || lowerText.includes("cloudflare ray id") || lowerText.includes("just a moment...")) {
+              this.iframe.style.display = "none";
+              this.setState(
+                "CLOUDFLARE_REQUIRED" /* CLOUDFLARE_REQUIRED */,
+                "\u76EE\u6807\u7AD9\u70B9\u542F\u7528\u4E86 Cloudflare \u4EBA\u673A\u9A8C\u8BC1\u9632\u62A4\uFF0C\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u4E2D\u76F4\u63A5\u6D4F\u89C8\uFF01"
+              );
+              return;
+            }
+            const safeHtml = this.sanitizeAndInjectBase(text, url);
+            this.iframe.removeAttribute("src");
+            this.iframe.srcdoc = safeHtml;
+            this.iframe.style.display = "block";
+            this.setState("SUCCESS" /* SUCCESS */);
+            return;
+          }
+        }
+      } catch {
       }
-      const safeHtml = this.sanitizeAndInjectBase(text, url);
-      this.iframe.srcdoc = safeHtml;
-      this.setState("SUCCESS" /* SUCCESS */);
-    } catch {
-      this.attemptDirectIframeLoad(url);
     }
-  }
-  attemptDirectIframeLoad(url) {
-    if (!this.iframe || this.isDestroyed) return;
-    let loaded = false;
-    const timeoutTimer = window.setTimeout(() => {
-      if (!loaded && !this.isDestroyed) {
-        this.setState(
-          "BLOCKED" /* BLOCKED */,
-          "\u65E0\u6CD5\u5728 Web iframe \u4E2D\u76F4\u63A5\u5D4C\u5957\u8BE5\u7AD9\u70B9\u3002\u8BF7\u4F7F\u7528 EdgeEver \u684C\u9762\u7248\u4EE5\u83B7\u5F97\u5B8C\u6574\u539F\u751F\u6D4F\u89C8\u5668\u652F\u6301\u3002"
-        );
+    this.iframe.removeAttribute("srcdoc");
+    this.iframe.style.display = "block";
+    let hasLoaded = false;
+    const watchdogTimer = window.setTimeout(() => {
+      if (!hasLoaded && !this.isDestroyed) {
+        hasLoaded = true;
+        this.setState("SUCCESS" /* SUCCESS */);
       }
-    }, 4500);
-    const onLoad = () => {
-      loaded = true;
-      window.clearTimeout(timeoutTimer);
-      if (!this.isDestroyed) {
+    }, 1500);
+    this.iframe.onload = () => {
+      if (!hasLoaded && !this.isDestroyed) {
+        hasLoaded = true;
+        window.clearTimeout(watchdogTimer);
         this.setState("SUCCESS" /* SUCCESS */);
       }
     };
-    const onError = () => {
-      loaded = true;
-      window.clearTimeout(timeoutTimer);
-      if (!this.isDestroyed) {
+    this.iframe.onerror = () => {
+      if (!hasLoaded && !this.isDestroyed) {
+        hasLoaded = true;
+        window.clearTimeout(watchdogTimer);
         this.setState(
           "BLOCKED" /* BLOCKED */,
-          "\u7AD9\u70B9\u5B89\u5168\u7B56\u7565\u7981\u6B62 iframe \u5D4C\u5165\uFF0C\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6216\u684C\u9762\u7248\u4E2D\u6253\u5F00\u3002"
+          "\u65E0\u6CD5\u52A0\u8F7D\u6B64\u9875\u9762\uFF0C\u53EF\u80FD\u53D7\u8DE8\u57DF\u5B89\u5168\u7B56\u7565\u9650\u5236\u3002"
         );
       }
     };
-    this.iframe.onload = onLoad;
-    this.iframe.onerror = onError;
     this.iframe.src = url;
   }
-  /**
-   * 注入 <base href="..."> 使得相对资源链接正确加载
-   * 仅消除 X-Frame-Options / frame-ancestors 影响，保留其余正常逻辑
-   */
   sanitizeAndInjectBase(html, originalUrl) {
-    const baseTag = `<base href="${originalUrl}" />`;
-    if (/<head[^>]*>/i.test(html)) {
-      return html.replace(/<head[^>]*>/i, `$&${baseTag}`);
+    let clean = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
+    clean = clean.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
+    const baseTag = `<base href="${originalUrl}" target="_blank">`;
+    if (/<head[^>]*>/i.test(clean)) {
+      return clean.replace(/<head[^>]*>/i, `$&${baseTag}`);
+    } else if (/<html[^>]*>/i.test(clean)) {
+      return clean.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
     }
-    return `${baseTag}${html}`;
+    return `<head>${baseTag}</head>${clean}`;
   }
   destroy() {
     this.isDestroyed = true;
@@ -533,14 +400,233 @@ var IframeRenderer = class extends BaseBrowserRenderer {
   }
 };
 
+// src/renderers/ElectronWebViewRenderer.ts
+var ElectronWebViewRenderer = class extends BaseBrowserRenderer {
+  webview = null;
+  fallbackRenderer = null;
+  isDestroyed = false;
+  watchdogTimer = null;
+  networkFetch = null;
+  constructor(initialUrl, initialTitle, events, networkFetch) {
+    super(initialUrl, initialTitle, events);
+    this.networkFetch = networkFetch || null;
+  }
+  mount(parent) {
+    this.container = parent;
+    this.isDestroyed = false;
+    const webview = document.createElement("webview");
+    this.webview = webview;
+    webview.setAttribute("partition", BrowserSession.getPartition());
+    webview.setAttribute("allowpopups", "true");
+    webview.setAttribute("src", this._currentUrl);
+    webview.style.width = "100%";
+    webview.style.height = "100%";
+    webview.style.border = "none";
+    webview.style.outline = "none";
+    webview.style.display = "flex";
+    webview.style.background = "#0f172a";
+    let hasReceivedEvent = false;
+    const onStart = () => {
+      if (this.isDestroyed) return;
+      hasReceivedEvent = true;
+      this.clearWatchdog();
+      this.setState("LOADING" /* LOADING */);
+    };
+    const onStop = () => {
+      if (this.isDestroyed) return;
+      hasReceivedEvent = true;
+      this.clearWatchdog();
+      this.syncUrlAndTitle();
+      this.setState("SUCCESS" /* SUCCESS */);
+    };
+    const onFail = (e) => {
+      if (this.isDestroyed) return;
+      hasReceivedEvent = true;
+      this.clearWatchdog();
+      const customEvent = e;
+      if (customEvent.errorCode === -3) return;
+      this.setState("FAILED" /* FAILED */, customEvent.errorDescription || "\u52A0\u8F7D\u5931\u8D25");
+    };
+    const onDomReady = () => {
+      if (this.isDestroyed) return;
+      hasReceivedEvent = true;
+      this.clearWatchdog();
+      this.syncUrlAndTitle();
+      this.setState("SUCCESS" /* SUCCESS */);
+    };
+    const onNewWindow = (e) => {
+      const custom = e;
+      if (custom.url) {
+        custom.preventDefault?.();
+        this.loadURL(custom.url);
+      }
+    };
+    const onNav = (e) => {
+      if (this.isDestroyed) return;
+      hasReceivedEvent = true;
+      this.clearWatchdog();
+      const custom = e;
+      if (custom.url) {
+        this.setUrl(custom.url);
+      }
+      this.syncUrlAndTitle();
+    };
+    webview.addEventListener("did-start-loading", onStart);
+    webview.addEventListener("did-stop-loading", onStop);
+    webview.addEventListener("did-fail-load", onFail);
+    webview.addEventListener("dom-ready", onDomReady);
+    webview.addEventListener("new-window", onNewWindow);
+    webview.addEventListener("did-navigate", onNav);
+    webview.addEventListener("did-navigate-in-page", onNav);
+    parent.appendChild(webview);
+    this.setState("LOADING" /* LOADING */);
+    this.watchdogTimer = window.setTimeout(() => {
+      if (!hasReceivedEvent && !this.isDestroyed && this.webview) {
+        console.warn("[Web Companion] Electron webview \u672A\u89E6\u53D1\u4E8B\u4EF6\uFF0C\u68C0\u6D4B\u5230\u5BBF\u4E3B\u672A\u542F\u7528 webviewTag\uFF0C\u81EA\u52A8\u81EA\u6108\u964D\u7EA7\u4E3A\u517C\u5BB9\u6E32\u67D3\u3002");
+        this.activateFallback(parent);
+      }
+    }, 1200);
+  }
+  clearWatchdog() {
+    if (this.watchdogTimer !== null) {
+      window.clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+  activateFallback(parent) {
+    this.clearWatchdog();
+    if (this.webview) {
+      try {
+        this.webview.remove();
+      } catch {
+      }
+      this.webview = null;
+    }
+    this.fallbackRenderer = new IframeRenderer(
+      this._currentUrl,
+      this._currentTitle,
+      this.events,
+      this.networkFetch
+    );
+    this.fallbackRenderer.mount(parent);
+  }
+  syncUrlAndTitle() {
+    if (!this.webview || this.isDestroyed) return;
+    try {
+      if (typeof this.webview.getURL === "function") {
+        const u = this.webview.getURL();
+        if (u && !u.startsWith("about:blank")) this.setUrl(u);
+      }
+    } catch {
+    }
+    try {
+      if (typeof this.webview.getTitle === "function") {
+        const t = this.webview.getTitle();
+        if (t) this.setTitle(t);
+      }
+    } catch {
+    }
+  }
+  loadURL(url) {
+    if (this.fallbackRenderer) {
+      this.fallbackRenderer.loadURL(url);
+      return;
+    }
+    if (!this.webview || this.isDestroyed) return;
+    this.setUrl(url);
+    this.setState("LOADING" /* LOADING */);
+    try {
+      if (typeof this.webview.loadURL === "function") {
+        this.webview.loadURL(url);
+      } else {
+        this.webview.src = url;
+      }
+    } catch {
+      this.webview.src = url;
+    }
+  }
+  reload() {
+    if (this.fallbackRenderer) {
+      this.fallbackRenderer.reload();
+      return;
+    }
+    if (!this.webview || this.isDestroyed) return;
+    this.setState("LOADING" /* LOADING */);
+    try {
+      if (typeof this.webview.reload === "function") {
+        this.webview.reload();
+      } else {
+        this.webview.src = this._currentUrl;
+      }
+    } catch {
+      this.webview.src = this._currentUrl;
+    }
+  }
+  goBack() {
+    if (this.fallbackRenderer) {
+      this.fallbackRenderer.goBack();
+      return;
+    }
+    try {
+      if (this.canGoBack()) this.webview?.goBack();
+    } catch {
+    }
+  }
+  goForward() {
+    if (this.fallbackRenderer) {
+      this.fallbackRenderer.goForward();
+      return;
+    }
+    try {
+      if (this.canGoForward()) this.webview?.goForward();
+    } catch {
+    }
+  }
+  canGoBack() {
+    if (this.fallbackRenderer) return this.fallbackRenderer.canGoBack();
+    if (!this.webview || this.isDestroyed) return false;
+    try {
+      return typeof this.webview.canGoBack === "function" ? this.webview.canGoBack() : false;
+    } catch {
+      return false;
+    }
+  }
+  canGoForward() {
+    if (this.fallbackRenderer) return this.fallbackRenderer.canGoForward();
+    if (!this.webview || this.isDestroyed) return false;
+    try {
+      return typeof this.webview.canGoForward === "function" ? this.webview.canGoForward() : false;
+    } catch {
+      return false;
+    }
+  }
+  destroy() {
+    this.isDestroyed = true;
+    this.clearWatchdog();
+    if (this.fallbackRenderer) {
+      this.fallbackRenderer.destroy();
+      this.fallbackRenderer = null;
+    }
+    if (this.webview) {
+      try {
+        if (typeof this.webview.stop === "function") this.webview.stop();
+        this.webview.remove();
+      } catch {
+      }
+      this.webview = null;
+    }
+    this.container = null;
+  }
+};
+
 // src/services/WebRendererFactory.ts
 var WebRendererFactory = class {
-  static createRenderer(url, title, events, enginePreference = "auto") {
+  static createRenderer(url, title, events, enginePreference = "auto", networkFetch) {
     const isElectron = isElectronEnvironment();
     if (enginePreference === "electron" || enginePreference === "auto" && isElectron) {
-      return new ElectronWebViewRenderer(url, title, events);
+      return new ElectronWebViewRenderer(url, title, events, networkFetch);
     }
-    return new IframeRenderer(url, title, events);
+    return new IframeRenderer(url, title, events, networkFetch);
   }
 };
 
@@ -1426,7 +1512,8 @@ function mountBrowserCard(container, embedInput) {
         EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
       }
     },
-    currentAttrs.engine
+    currentAttrs.engine,
+    pluginContext?.network?.fetch
   );
   const toolbar = new WebToolbar({
     initialUrl: currentAttrs.url,

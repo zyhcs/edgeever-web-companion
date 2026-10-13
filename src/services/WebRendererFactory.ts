@@ -6,23 +6,24 @@
 import { IBrowserRenderer, RendererEngine, RendererEvents } from "../types";
 import { isElectronEnvironment } from "../utils/EnvironmentDetector";
 import { ElectronWebViewRenderer } from "../renderers/ElectronWebViewRenderer";
-import { IframeRenderer } from "../renderers/IframeRenderer";
+import { IframeRenderer, NetworkFetchFn } from "../renderers/IframeRenderer";
 
 export class WebRendererFactory {
   public static createRenderer(
     url: string,
     title: string,
     events: RendererEvents,
-    enginePreference: RendererEngine = "auto"
+    enginePreference: RendererEngine = "auto",
+    networkFetch?: NetworkFetchFn | null
   ): IBrowserRenderer {
     const isElectron = isElectronEnvironment();
 
-    // 优先策略：桌面端真实浏览器内核优先
+    // 优先策略：桌面端真实浏览器内核优先（若宿主未启用 webviewTag 则自动自愈降级）
     if (enginePreference === "electron" || (enginePreference === "auto" && isElectron)) {
-      return new ElectronWebViewRenderer(url, title, events);
+      return new ElectronWebViewRenderer(url, title, events, networkFetch);
     }
 
     // Web 端或显式指定 iframe
-    return new IframeRenderer(url, title, events);
+    return new IframeRenderer(url, title, events, networkFetch);
   }
 }

@@ -406,7 +406,8 @@ function mountBrowserCard(container: HTMLElement, embedInput: EmbedInput): () =>
         EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
       },
     },
-    currentAttrs.engine
+    currentAttrs.engine,
+    pluginContext?.network?.fetch
   );
 
   // 3. 初始化 WebToolbar (Omnibox 与控制台)

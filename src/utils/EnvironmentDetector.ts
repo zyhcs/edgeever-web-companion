@@ -39,3 +39,25 @@ export function isElectronEnvironment(): boolean {
 
   return false;
 }
+
+/**
+ * 探测当前宿主是否真正启用了 Electron 原生 <webview> 标签能力
+ */
+export function isWebViewTagSupported(): boolean {
+  if (!isElectronEnvironment()) {
+    return false;
+  }
+
+  try {
+    const el = document.createElement("webview");
+    // 如果启用了 webviewTag，创建出的元素应该具有专有属性/方法或特定原型
+    const anyEl = el as unknown as Record<string, unknown>;
+    if (typeof anyEl.loadURL === "function" || typeof anyEl.reload === "function") {
+      return true;
+    }
+    // 未开启 webviewTag 时，只是 HTMLUnknownElement 或无专属实现
+    return false;
+  } catch {
+    return false;
+  }
+}
