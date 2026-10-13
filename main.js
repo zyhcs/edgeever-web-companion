@@ -1,1238 +1,1672 @@
-/**
- * EdgeEver Web Companion Plugin (网页伴侣)
- * 官方标准嵌入架构：基于 context.editor.embeds.register 与 context.editor.insertEmbed
- * v1.3.1 - 彻底根除白屏：智能防嵌站点拦截、优雅深色直达卡片、自适应全宽与交互式地址栏
- */
-
-console.log(
-  "%c[EdgeEver Web Companion] v1.3.1 Loaded - Zero-Blank Guard & Smart Frame Security",
-  "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
-);
-
-// 清理历史残留
-if (window.__edgeever_wc_observer) {
-  try {
-    window.__edgeever_wc_observer.disconnect();
-  } catch (_) {}
-  window.__edgeever_wc_observer = null;
-}
-
-document.querySelectorAll(
-  ".edgeever-wc-topbar, .edgeever-wc-bind-trigger, .edgeever-wc-web-pane, .edgeever-wc-resizer, .edgeever-wc-modal-backdrop, .edgeever-web-floating-trigger"
-).forEach((el) => {
-  try { el.remove(); } catch (_) {}
-});
-
-// ==================== 1. 样式内联注入器 ====================
-
-const INJECTED_CSS = `
-.edgeever-web-embed-block {
-  display: block !important;
-  width: 100% !important;
-  margin: 18px 0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 10px !important;
-  background: #0f1217 !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
-  overflow: hidden !important;
-  box-sizing: border-box !important;
-  user-select: none !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease, margin 0.2s ease !important;
-  position: relative !important;
-}
-
-.edgeever-web-embed-block:hover {
-  border-color: rgba(56, 189, 248, 0.28) !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55) !important;
-}
-
-.edgeever-web-embed-bar {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  height: 38px !important;
-  padding: 0 12px !important;
-  background: rgba(22, 27, 34, 0.96) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-  gap: 10px !important;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
-  box-sizing: border-box !important;
-}
-
-.edgeever-web-mac-controls {
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  flex-shrink: 0 !important;
-}
-
-.edgeever-web-dot {
-  width: 9px !important;
-  height: 9px !important;
-  border-radius: 50% !important;
-  display: inline-block !important;
-  opacity: 0.8 !important;
-}
-
-.edgeever-web-dot.red { background: #ff5f56 !important; }
-.edgeever-web-dot.yellow { background: #ffbd2e !important; }
-.edgeever-web-dot.green { background: #27c93f !important; }
-
-/* 交互式地址栏 Omnibox */
-.edgeever-web-omnibox-wrap {
-  flex: 1 !important;
-  max-width: 640px !important;
-  min-width: 180px !important;
-  display: flex !important;
-  align-items: center !important;
-  background: rgba(0, 0, 0, 0.35) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 6px !important;
-  padding: 2px 8px !important;
-  transition: all 0.2s ease !important;
-  gap: 6px !important;
-}
-
-.edgeever-web-omnibox-wrap:focus-within {
-  border-color: #38bdf8 !important;
-  background: rgba(0, 0, 0, 0.55) !important;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
-}
-
-.edgeever-web-lock-icon {
-  font-size: 11px !important;
-  color: #38bdf8 !important;
-  opacity: 0.85 !important;
-  flex-shrink: 0 !important;
-  user-select: none !important;
-}
-
-.edgeever-web-omnibox-input {
-  flex: 1 !important;
-  min-width: 0 !important;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  font-size: 12px !important;
-  color: #e2e8f0 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
-  padding: 2px 0 !important;
-}
-
-.edgeever-web-omnibox-input::placeholder {
-  color: #64748b !important;
-}
-
-.edgeever-web-embed-actions {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  gap: 4px !important;
-  flex-shrink: 0 !important;
-}
-
-.edgeever-web-btn-icon {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 3px !important;
-  height: 24px !important;
-  padding: 0 7px !important;
-  background: transparent !important;
-  border: 1px solid transparent !important;
-  border-radius: 4px !important;
-  color: #94a3b8 !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  cursor: pointer !important;
-  transition: all 0.15s ease !important;
-  white-space: nowrap !important;
-  text-decoration: none !important;
-  box-sizing: border-box !important;
-  line-height: 1 !important;
-}
-
-.edgeever-web-btn-icon:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  color: #f1f5f9 !important;
-}
-
-.edgeever-web-btn-primary {
-  background: rgba(56, 189, 248, 0.12) !important;
-  border-color: rgba(56, 189, 248, 0.25) !important;
-  color: #38bdf8 !important;
-}
-
-.edgeever-web-btn-primary:hover {
-  background: #38bdf8 !important;
-  border-color: #38bdf8 !important;
-  color: #ffffff !important;
-}
-
-.edgeever-web-iframe-container {
-  width: 100% !important;
-  min-height: 320px !important;
-  position: relative !important;
-  background: #0f1217 !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-}
-
-.edgeever-web-iframe {
-  width: 100% !important;
-  height: 100% !important;
-  border: none !important;
-  display: block !important;
-  background: transparent !important;
-  box-sizing: border-box !important;
-  position: relative !important;
-  z-index: 2 !important;
-}
-
-.edgeever-web-loading-bar {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: 2.5px !important;
-  background: #38bdf8 !important;
-  animation: eeWcLoading 1.2s infinite ease-in-out !important;
-  z-index: 10 !important;
-}
-
-@keyframes eeWcLoading {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(0); }
-  100% { transform: translateX(100%); }
-}
-
-/* 底部 Mac 风格拖拽伸缩手柄 */
-.edgeever-web-resize-bar {
-  height: 14px !important;
-  width: 100% !important;
-  background: rgba(255, 255, 255, 0.02) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
-  cursor: row-resize !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  position: relative !important;
-  transition: all 0.15s ease !important;
-  user-select: none !important;
-}
-
-.edgeever-web-resize-bar:hover,
-.edgeever-web-resize-bar.is-dragging {
-  background: rgba(56, 189, 248, 0.12) !important;
-  border-top-color: rgba(56, 189, 248, 0.3) !important;
-}
-
-.edgeever-web-resize-pill {
-  width: 36px !important;
-  height: 3px !important;
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-radius: 2px !important;
-  transition: all 0.15s ease !important;
-}
-
-.edgeever-web-resize-bar:hover .edgeever-web-resize-pill,
-.edgeever-web-resize-bar.is-dragging .edgeever-web-resize-pill {
-  background: #38bdf8 !important;
-  width: 48px !important;
-}
-
-.edgeever-web-height-badge {
-  position: absolute !important;
-  right: 12px !important;
-  font-size: 10px !important;
-  color: #94a3b8 !important;
-  font-family: monospace !important;
-  pointer-events: none !important;
-  opacity: 0;
-  transition: opacity 0.2s ease !important;
-}
-
-.edgeever-web-resize-bar:hover .edgeever-web-height-badge,
-.edgeever-web-resize-bar.is-dragging .edgeever-web-height-badge {
-  opacity: 1 !important;
-}
-
-/* 沉浸式铺满整页视图 */
-.edgeever-web-embed-block.is-fullscreen-view {
-  position: fixed !important;
-  top: 40px !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: calc(100vh - 40px) !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  z-index: 9999 !important;
-}
-
-.edgeever-web-embed-block.is-fullscreen-view .edgeever-web-iframe-container {
-  height: calc(100% - 52px) !important;
-  min-height: unset !important;
-}
-
-.edgeever-web-modal-backdrop {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background: rgba(0, 0, 0, 0.72) !important;
-  backdrop-filter: blur(6px) !important;
-  -webkit-backdrop-filter: blur(6px) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 99999 !important;
-}
-
-.edgeever-web-modal {
-  width: 460px !important;
-  max-width: 92vw !important;
-  background: #14171d !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
-  padding: 18px 20px !important;
-  box-sizing: border-box !important;
-  color: #e2e8f0 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
-}
-`;
-
-function ensureInjectedStyle() {
-  const STYLE_ID = "edgeever-web-companion-style";
-  let styleEl = document.getElementById(STYLE_ID);
-  if (!styleEl) {
-    styleEl = document.createElement("style");
-    styleEl.id = STYLE_ID;
-    document.head.appendChild(styleEl);
+// src/utils/url.ts
+function sanitizeUrl(input) {
+  if (!input || typeof input !== "string") {
+    return "about:blank";
   }
-  styleEl.textContent = INJECTED_CSS;
-}
-
-// ==================== 2. 工具辅助函数 ====================
-
-function sanitizeUrl(raw) {
-  if (!raw) return "https://skillry.dev";
-  let u = String(raw).trim();
-  if (!/^https?:\/\//i.test(u)) {
-    u = "https://" + u;
+  let trimmed = input.trim();
+  if (!trimmed) {
+    return "about:blank";
   }
-  return u;
+  if (!/^https?:\/\//i.test(trimmed) && !/^about:/i.test(trimmed) && !/^file:\/\//i.test(trimmed)) {
+    trimmed = "https://" + trimmed;
+  }
+  return trimmed;
 }
-
-function escapeHtml(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-// 检查是否为已知被全局严格禁止 iframe 嵌入的网站 (X-Frame-Options: DENY)
-function isKnownFrameDeniedHost(urlStr) {
+function extractHostname(url, fallback = "Web View") {
   try {
-    const host = new URL(urlStr).hostname.toLowerCase();
-    return (
-      host.endsWith("github.com") ||
-      host.endsWith("google.com") ||
-      host.endsWith("google.cn") ||
-      host.endsWith("youtube.com") ||
-      host.endsWith("bilibili.com") ||
-      host.endsWith("twitter.com") ||
-      host.endsWith("x.com") ||
-      host.endsWith("zhihu.com")
-    );
-  } catch (_) {
+    const parsed = new URL(url);
+    return parsed.hostname || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// src/services/EmbedStore.ts
+var EmbedStore = class {
+  /**
+   * 将输入的各种不规则数据归一化为标准的 WebEmbedAttrs
+   */
+  static parseAttrs(input) {
+    let rawUrl = "";
+    let rawTitle = "";
+    let rawHeight = 720;
+    let rawFullscreen = false;
+    let rawEngine = "auto";
+    let rawWidthMode = "editor";
+    if (typeof input === "string") {
+      rawUrl = input;
+    } else if (input && typeof input === "object") {
+      const obj = input;
+      if (obj.attrs) {
+        if (obj.attrs.url) rawUrl = obj.attrs.url;
+        if (obj.attrs.title) rawTitle = obj.attrs.title;
+        if (typeof obj.attrs.height === "number") rawHeight = obj.attrs.height;
+        if (typeof obj.attrs.fullscreen === "boolean") rawFullscreen = obj.attrs.fullscreen;
+        if (obj.attrs.engine) rawEngine = obj.attrs.engine;
+        if (obj.attrs.widthMode) rawWidthMode = obj.attrs.widthMode;
+      }
+      if (obj.data) {
+        if (!rawUrl && obj.data.url) rawUrl = obj.data.url;
+        if (!rawTitle && obj.data.title) rawTitle = obj.data.title;
+        if (obj.data.height) rawHeight = obj.data.height;
+        if (typeof obj.data.fullscreen === "boolean") rawFullscreen = obj.data.fullscreen;
+        if (obj.data.engine) rawEngine = obj.data.engine;
+        if (obj.data.widthMode) rawWidthMode = obj.data.widthMode;
+      }
+      if (obj.dataJson) {
+        try {
+          const parsed = JSON.parse(obj.dataJson);
+          if (!rawUrl && typeof parsed.url === "string") rawUrl = parsed.url;
+          if (!rawTitle && typeof parsed.title === "string") rawTitle = parsed.title;
+          if (typeof parsed.height === "number") rawHeight = parsed.height;
+          if (typeof parsed.fullscreen === "boolean") rawFullscreen = parsed.fullscreen;
+          if (typeof parsed.engine === "string") rawEngine = parsed.engine;
+          if (typeof parsed.widthMode === "string") rawWidthMode = parsed.widthMode;
+        } catch {
+        }
+      }
+      if (!rawUrl && obj.resourceId) rawUrl = obj.resourceId;
+      if (!rawTitle && obj.title) rawTitle = obj.title;
+    }
+    const finalUrl = sanitizeUrl(rawUrl);
+    const finalTitle = rawTitle || extractHostname(finalUrl, "Web View");
+    return {
+      url: finalUrl,
+      title: finalTitle,
+      height: rawHeight > 0 ? rawHeight : 720,
+      fullscreen: Boolean(rawFullscreen),
+      engine: rawEngine || "auto",
+      widthMode: rawWidthMode || "editor"
+    };
+  }
+  /**
+   * 将修改后的 attrs 双向持久化回写至 EdgeEver 笔记文档中
+   */
+  static updateEmbedAttributesInDoc(context, embedId, oldUrl, updatedAttrs) {
+    if (!context) return;
+    const dataPayload = {
+      url: updatedAttrs.url,
+      title: updatedAttrs.title,
+      height: updatedAttrs.height,
+      fullscreen: updatedAttrs.fullscreen,
+      engine: updatedAttrs.engine,
+      widthMode: updatedAttrs.widthMode
+    };
+    const dataJson = JSON.stringify(dataPayload);
+    const editor = context.editor?.getInstance ? context.editor.getInstance() : null;
+    let updatedInTiptap = false;
+    if (editor?.state?.doc && editor?.commands?.command) {
+      try {
+        editor.state.doc.descendants((node, pos) => {
+          if ((node.type?.name === "edgeeverPluginEmbed" || node.type?.name === "edgeeverEmbed" || node.type?.name === "web-view") && (node.attrs?.id === embedId || node.attrs?.resourceId === oldUrl || node.attrs?.url === oldUrl)) {
+            editor.commands?.command?.(({ tr }) => {
+              const trAny = tr;
+              trAny.setNodeMarkup(pos, void 0, {
+                ...node.attrs,
+                title: updatedAttrs.title,
+                resourceId: updatedAttrs.url,
+                url: updatedAttrs.url,
+                data: dataPayload,
+                dataJson,
+                attrs: updatedAttrs
+              });
+              return true;
+            });
+            updatedInTiptap = true;
+            return false;
+          }
+          return true;
+        });
+      } catch (err) {
+        console.warn("[Web Companion] update node markup in tiptap failed:", err);
+      }
+    }
+    if (!updatedInTiptap && context.editor?.editMarkdown) {
+      context.editor.editMarkdown((md) => {
+        return md.replace(
+          /```edgeever-plugin-embed\n([\s\S]*?)\n```/g,
+          (fullMatch, jsonStr) => {
+            try {
+              const parsed = JSON.parse(jsonStr);
+              if (parsed.id === embedId || parsed.resourceId === oldUrl) {
+                parsed.title = updatedAttrs.title;
+                parsed.resourceId = updatedAttrs.url;
+                parsed.data = dataPayload;
+                parsed.dataJson = dataJson;
+                parsed.attrs = updatedAttrs;
+                return `\`\`\`edgeever-plugin-embed
+${JSON.stringify(parsed)}
+\`\`\``;
+              }
+            } catch {
+            }
+            return fullMatch;
+          }
+        );
+      }).catch(() => {
+      });
+    }
+  }
+};
+
+// src/utils/EnvironmentDetector.ts
+function isElectronEnvironment() {
+  if (typeof window === "undefined") {
     return false;
   }
+  const extendedWin = window;
+  const ua = window.navigator?.userAgent || "";
+  if (ua.includes("Electron")) {
+    return true;
+  }
+  if (Boolean(extendedWin.electron)) {
+    return true;
+  }
+  if (Boolean(extendedWin.process?.versions?.electron)) {
+    return true;
+  }
+  return false;
 }
 
-let pluginContext = null;
-
-function getEditorInstance() {
-  try {
-    if (pluginContext?.editor?.getEditor) {
-      const ed = pluginContext.editor.getEditor();
-      if (ed) return ed;
+// src/renderers/BrowserRenderer.ts
+var BaseBrowserRenderer = class {
+  _state = "INIT" /* INIT */;
+  _currentUrl;
+  _currentTitle;
+  events;
+  container = null;
+  constructor(initialUrl, initialTitle, events) {
+    this._currentUrl = initialUrl;
+    this._currentTitle = initialTitle;
+    this.events = events;
+  }
+  get state() {
+    return this._state;
+  }
+  getURL() {
+    return this._currentUrl;
+  }
+  getTitle() {
+    return this._currentTitle;
+  }
+  setState(nextState, detail) {
+    if (this._state !== nextState) {
+      this._state = nextState;
+      this.events.onStateChange(nextState, detail);
     }
-    if (pluginContext?.editor?.view?.state) {
-      return pluginContext.editor;
+  }
+  setUrl(nextUrl) {
+    if (this._currentUrl !== nextUrl) {
+      this._currentUrl = nextUrl;
+      this.events.onUrlChange(nextUrl);
     }
-  } catch (_) {}
-  return null;
-}
+  }
+  setTitle(nextTitle) {
+    if (this._currentTitle !== nextTitle) {
+      this._currentTitle = nextTitle;
+      this.events.onTitleChange(nextTitle);
+    }
+  }
+};
 
-// ==================== 3. 智能网络穿透与防白屏加载引擎 ====================
+// src/services/BrowserSession.ts
+var BrowserSession = class {
+  /**
+   * 默认持久化 Partition 名称
+   * 确保用户在嵌入视窗中的 Cookie、LocalStorage、SessionStorage 与登录态在跨会话中完全持久保存
+   */
+  static DEFAULT_PARTITION = "persist:edgeever-web";
+  static getPartition() {
+    return this.DEFAULT_PARTITION;
+  }
+};
 
-async function fetchPublicHtml(url, maxRedirects = 3) {
-  if (!pluginContext?.network?.fetch) return null;
-
-  let currentUrl = url;
-  for (let i = 0; i <= maxRedirects; i++) {
+// src/renderers/ElectronWebViewRenderer.ts
+var ElectronWebViewRenderer = class extends BaseBrowserRenderer {
+  webview = null;
+  isDestroyed = false;
+  constructor(initialUrl, initialTitle, events) {
+    super(initialUrl, initialTitle, events);
+  }
+  mount(parent) {
+    this.container = parent;
+    this.isDestroyed = false;
+    const webview = document.createElement("webview");
+    this.webview = webview;
+    webview.setAttribute("partition", BrowserSession.getPartition());
+    webview.setAttribute("allowpopups", "true");
+    webview.setAttribute("src", this._currentUrl);
+    webview.style.width = "100%";
+    webview.style.height = "100%";
+    webview.style.border = "none";
+    webview.style.outline = "none";
+    webview.style.display = "flex";
+    webview.style.background = "#0f172a";
+    this.bindEvents(webview);
+    parent.appendChild(webview);
+    this.setState("LOADING" /* LOADING */);
+  }
+  bindEvents(webview) {
+    const onStartLoading = () => {
+      if (this.isDestroyed) return;
+      this.setState("LOADING" /* LOADING */);
+    };
+    const onStopLoading = () => {
+      if (this.isDestroyed) return;
+      this.syncUrlAndTitle();
+      this.setState("SUCCESS" /* SUCCESS */);
+    };
+    const onFailLoad = (e) => {
+      if (this.isDestroyed) return;
+      const customEvent = e;
+      if (customEvent.errorCode === -3) {
+        return;
+      }
+      const desc = customEvent.errorDescription || `ErrorCode: ${customEvent.errorCode || "Unknown"}`;
+      this.setState("FAILED" /* FAILED */, desc);
+    };
+    const onDomReady = () => {
+      if (this.isDestroyed) return;
+      this.syncUrlAndTitle();
+      this.setState("SUCCESS" /* SUCCESS */);
+    };
+    const onNewWindow = (e) => {
+      const customEvent = e;
+      if (customEvent.url) {
+        if (typeof customEvent.preventDefault === "function") {
+          customEvent.preventDefault();
+        }
+        this.loadURL(customEvent.url);
+      }
+    };
+    const onNavigate = (e) => {
+      if (this.isDestroyed) return;
+      const customEvent = e;
+      if (customEvent.url) {
+        this.setUrl(customEvent.url);
+      }
+      this.syncUrlAndTitle();
+    };
+    webview.addEventListener("did-start-loading", onStartLoading);
+    webview.addEventListener("did-stop-loading", onStopLoading);
+    webview.addEventListener("did-fail-load", onFailLoad);
+    webview.addEventListener("dom-ready", onDomReady);
+    webview.addEventListener("new-window", onNewWindow);
+    webview.addEventListener("did-navigate", onNavigate);
+    webview.addEventListener("did-navigate-in-page", onNavigate);
+  }
+  syncUrlAndTitle() {
+    if (!this.webview || this.isDestroyed) return;
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 9000);
-
-      // 严格传递 EdgeEver 白名单请求头 (accept)
-      const resp = await pluginContext.network.fetch(currentUrl, {
-        transport: "public",
-        method: "GET",
-        headers: {
-          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timer);
-      if (!resp) continue;
-
-      // 自动跟随重定向
-      if (resp.status >= 300 && resp.status < 400) {
-        const loc = resp.headers.get("location");
-        if (loc) {
-          currentUrl = new URL(loc, currentUrl).href;
-          continue;
+      if (typeof this.webview.getURL === "function") {
+        const currentUrl = this.webview.getURL();
+        if (currentUrl && !currentUrl.startsWith("about:blank")) {
+          this.setUrl(currentUrl);
         }
       }
-
-      if (resp.ok) {
-        const text = await resp.text();
-        if (text && text.length > 50) {
-          return { html: text, finalUrl: currentUrl };
-        }
-      }
-    } catch (err) {
-      console.warn("[Web Companion] fetchPublicHtml error:", err);
-      break;
+    } catch {
     }
-  }
-  return null;
-}
-
-async function loadUrlIntoIframe(card, iframe, url, loadingBar) {
-  if (loadingBar) loadingBar.style.display = "block";
-  const fallbackPane = card.querySelector(".edgeever-web-fallback-pane");
-
-  // 1. 针对已知强制防嵌站点（如 GitHub、Google 等）：
-  // 坚决不使用原生 iframe 加载，彻底消灭 Chromium 渲染的纯白色白板！
-  if (isKnownFrameDeniedHost(url)) {
-    iframe.style.display = "none";
-    if (fallbackPane) fallbackPane.style.display = "flex";
-    if (loadingBar) {
-      setTimeout(() => { loadingBar.style.display = "none"; }, 200);
-    }
-    return;
-  }
-
-  // 2. 尝试后台网络穿透拉取并清洗 CSP
-  const fetched = await fetchPublicHtml(url);
-  if (fetched) {
-    let { html, finalUrl } = fetched;
-
-    // 清洗安全限制 meta 标签
-    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, "");
-    html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, "");
-
-    // 注入 base 标签使相对路径资源正确请求原站
-    const baseTag = `<base href="${escapeHtml(finalUrl)}" target="_blank">`;
-    if (/<head[^>]*>/i.test(html)) {
-      html = html.replace(/<head[^>]*>/i, (m) => `${m}\n  ${baseTag}`);
-    } else if (/<html[^>]*>/i.test(html)) {
-      html = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
-    } else {
-      html = `<head>${baseTag}</head>\n` + html;
-    }
-
-    iframe.removeAttribute("src");
-    iframe.srcdoc = html;
-    iframe.style.display = "block";
-    if (loadingBar) {
-      setTimeout(() => { loadingBar.style.display = "none"; }, 300);
-    }
-    return;
-  }
-
-  // 3. 原生 iframe 加载（带安全沙箱与零白屏监控）
-  iframe.removeAttribute("srcdoc");
-  iframe.src = url;
-  iframe.style.display = "block";
-
-  iframe.onload = () => {
-    if (loadingBar) loadingBar.style.display = "none";
-  };
-
-  setTimeout(() => {
-    if (loadingBar) loadingBar.style.display = "none";
-  }, 4000);
-}
-
-// ==================== 4. 节点属性更新与持久化引擎 ====================
-
-function updateEmbedAttributesInDoc(embedId, oldUrl, newTitle, newUrl, newHeight, newWidthMode) {
-  const editor = getEditorInstance();
-  let updatedInTiptap = false;
-
-  const dataPayload = JSON.stringify({
-    url: newUrl,
-    title: newTitle,
-    height: newHeight,
-    widthMode: newWidthMode || "editor",
-  });
-
-  if (editor?.state?.doc) {
     try {
-      editor.state.doc.descendants((node, pos) => {
-        if (
-          (node.type.name === "edgeeverPluginEmbed" || node.type.name === "pluginEmbed") &&
-          (node.attrs.id === embedId || node.attrs.resourceId === oldUrl)
-        ) {
-          editor.commands.command(({ tr }) => {
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              title: newTitle,
-              resourceId: newUrl,
-              dataJson: dataPayload,
-            });
-            return true;
-          });
-          updatedInTiptap = true;
-          return false;
+      if (typeof this.webview.getTitle === "function") {
+        const title = this.webview.getTitle();
+        if (title) {
+          this.setTitle(title);
         }
-      });
-    } catch (e) {
-      console.warn("[Web Companion] update node markup in tiptap failed:", e);
-    }
-  }
-
-  // Fallback: 在 Markdown 模式下通过 editMarkdown 正则替换
-  if (!updatedInTiptap && pluginContext?.editor?.editMarkdown) {
-    pluginContext.editor.editMarkdown((md) => {
-      return md.replace(
-        /```edgeever-plugin-embed\n([\s\S]*?)\n```/g,
-        (fullMatch, jsonStr) => {
-          try {
-            const parsed = JSON.parse(jsonStr);
-            if (parsed.id === embedId || parsed.resourceId === oldUrl) {
-              parsed.title = newTitle;
-              parsed.resourceId = newUrl;
-              parsed.dataJson = dataPayload;
-              return `\`\`\`edgeever-plugin-embed\n${JSON.stringify(parsed)}\n\`\`\``;
-            }
-          } catch (_) {}
-          return fullMatch;
-        }
-      );
-    }).catch(() => {});
-  }
-}
-
-// ==================== 5. 宽度自适应 (Editor Breakout) 引擎 ====================
-
-function applyCardLayout(card, widthMode) {
-  if (!card || !card.parentElement || card.classList.contains("is-fullscreen-view")) return;
-
-  if (widthMode === "normal") {
-    card.style.width = "100%";
-    card.style.maxWidth = "100%";
-    card.style.marginLeft = "0px";
-    card.style.marginRight = "0px";
-    return;
-  }
-
-  try {
-    const parent = card.parentElement;
-    let viewport = card.closest(".overflow-y-auto") || card.closest(".overflow-auto");
-
-    if (!viewport) {
-      let cur = parent;
-      while (cur && cur !== document.body) {
-        if (cur.clientWidth > parent.clientWidth + 40) {
-          viewport = cur;
-          break;
-        }
-        cur = cur.parentElement;
       }
+    } catch {
     }
-
-    if (viewport) {
-      const viewportRect = viewport.getBoundingClientRect();
-      const parentRect = parent.getBoundingClientRect();
-      const viewportWidth = viewport.clientWidth;
-
-      if (widthMode === "editor") {
-        // 适应编辑器工作区宽度，左右保留 24px 优雅呼吸留白
-        const targetWidth = Math.max(parentRect.width, viewportWidth - 48);
-        const targetLeft = viewportRect.left + 24;
-        const offset = Math.round(targetLeft - parentRect.left);
-
-        card.style.width = `${targetWidth}px`;
-        card.style.maxWidth = `${targetWidth}px`;
-        card.style.marginLeft = `${offset}px`;
-        card.style.marginRight = "auto";
-      } else if (widthMode === "wide") {
-        // 宽屏模式 980px 居中
-        const maxW = Math.min(980, viewportWidth - 32);
-        const targetLeft = viewportRect.left + (viewportWidth - maxW) / 2;
-        const offset = Math.round(targetLeft - parentRect.left);
-
-        card.style.width = `${maxW}px`;
-        card.style.maxWidth = `${maxW}px`;
-        card.style.marginLeft = `${offset}px`;
-        card.style.marginRight = "auto";
-      }
-    } else {
-      card.style.width = "100%";
-      card.style.maxWidth = "100%";
-      card.style.marginLeft = "0px";
-      card.style.marginRight = "0px";
-    }
-  } catch (_) {
-    card.style.width = "100%";
-    card.style.maxWidth = "100%";
-    card.style.marginLeft = "0px";
-    card.style.marginRight = "0px";
   }
-}
-
-// ==================== 6. 构建与挂载卡片 DOM (Mini 浏览器视窗) ====================
-
-function mountWebCompanionCard(container, embedData) {
-  let initialUrl = "";
-  let initialTitle = "";
-  let embedId = "";
-  let initialHeight = 720;
-  let initialWidthMode = "editor"; // 统一默认直接使用全宽
-
-  if (typeof embedData === "string") {
-    initialUrl = embedData;
-  } else if (embedData && typeof embedData === "object") {
-    initialUrl = embedData.data?.url || embedData.resourceId || "";
-    initialTitle = embedData.title || "";
-    embedId = embedData.id || "";
-
-    let extraData = embedData.data;
-    if (!extraData && embedData.dataJson) {
+  loadURL(url) {
+    if (!this.webview || this.isDestroyed) return;
+    this.setUrl(url);
+    this.setState("LOADING" /* LOADING */);
+    try {
+      if (typeof this.webview.loadURL === "function") {
+        this.webview.loadURL(url);
+      } else {
+        this.webview.src = url;
+      }
+    } catch {
+      this.webview.src = url;
+    }
+  }
+  reload() {
+    if (!this.webview || this.isDestroyed) return;
+    try {
+      this.setState("LOADING" /* LOADING */);
+      if (typeof this.webview.reload === "function") {
+        this.webview.reload();
+      } else {
+        this.webview.src = this._currentUrl;
+      }
+    } catch {
+      this.webview.src = this._currentUrl;
+    }
+  }
+  goBack() {
+    if (!this.webview || this.isDestroyed) return;
+    try {
+      if (this.canGoBack()) {
+        this.webview.goBack();
+      }
+    } catch {
+    }
+  }
+  goForward() {
+    if (!this.webview || this.isDestroyed) return;
+    try {
+      if (this.canGoForward()) {
+        this.webview.goForward();
+      }
+    } catch {
+    }
+  }
+  canGoBack() {
+    if (!this.webview || this.isDestroyed) return false;
+    try {
+      return typeof this.webview.canGoBack === "function" ? this.webview.canGoBack() : false;
+    } catch {
+      return false;
+    }
+  }
+  canGoForward() {
+    if (!this.webview || this.isDestroyed) return false;
+    try {
+      return typeof this.webview.canGoForward === "function" ? this.webview.canGoForward() : false;
+    } catch {
+      return false;
+    }
+  }
+  destroy() {
+    this.isDestroyed = true;
+    if (this.webview) {
       try {
-        extraData = JSON.parse(embedData.dataJson);
-      } catch (_) {}
+        if (typeof this.webview.stop === "function") {
+          this.webview.stop();
+        }
+        this.webview.remove();
+      } catch {
+      }
+      this.webview = null;
     }
-    if (extraData && typeof extraData === "object") {
-      if (extraData.url) initialUrl = extraData.url;
-      if (extraData.title) initialTitle = extraData.title;
-      if (extraData.height) initialHeight = parseInt(extraData.height, 10) || 720;
-      if (extraData.widthMode) initialWidthMode = extraData.widthMode;
+    this.container = null;
+  }
+};
+
+// src/renderers/IframeRenderer.ts
+var IframeRenderer = class extends BaseBrowserRenderer {
+  iframe = null;
+  isDestroyed = false;
+  abortController = null;
+  constructor(initialUrl, initialTitle, events) {
+    super(initialUrl, initialTitle, events);
+  }
+  mount(parent) {
+    this.container = parent;
+    this.isDestroyed = false;
+    const iframe = document.createElement("iframe");
+    this.iframe = iframe;
+    iframe.setAttribute(
+      "sandbox",
+      "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
+    );
+    iframe.setAttribute("loading", "lazy");
+    iframe.style.width = "100%";
+    iframe.style.height = "100%";
+    iframe.style.border = "none";
+    iframe.style.outline = "none";
+    iframe.style.display = "block";
+    iframe.style.background = "#0f172a";
+    parent.appendChild(iframe);
+    this.loadWithFallback(this._currentUrl);
+  }
+  loadURL(url) {
+    this.setUrl(url);
+    this.loadWithFallback(url);
+  }
+  reload() {
+    this.loadWithFallback(this._currentUrl);
+  }
+  goBack() {
+    try {
+      this.iframe?.contentWindow?.history.back();
+    } catch {
     }
   }
-
-  let currentUrl = sanitizeUrl(initialUrl);
-  let domain = "Web View";
-  try {
-    domain = new URL(currentUrl).hostname || currentUrl;
-  } catch (_) {
-    domain = currentUrl;
+  goForward() {
+    try {
+      this.iframe?.contentWindow?.history.forward();
+    } catch {
+    }
   }
-
-  let currentTitle = initialTitle || domain;
-  let currentHeight = initialHeight;
-  let currentWidthMode = initialWidthMode || "editor";
-
-  container.innerHTML = "";
-  const card = document.createElement("div");
-  card.className = "edgeever-web-embed-block";
-  card.setAttribute("contenteditable", "false");
-
-  function getWidthLabel(mode) {
-    if (mode === "editor") return "📐 铺满编辑区";
-    if (mode === "wide") return "📏 宽屏(980px)";
-    return "📝 标准正文宽";
+  canGoBack() {
+    return false;
   }
+  canGoForward() {
+    return false;
+  }
+  async loadWithFallback(url) {
+    if (this.isDestroyed || !this.iframe) return;
+    this.abortController?.abort();
+    this.abortController = new AbortController();
+    this.setState("LOADING" /* LOADING */);
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      this.iframe.src = url;
+      this.setState("SUCCESS" /* SUCCESS */);
+      return;
+    }
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        mode: "cors",
+        signal: this.abortController.signal
+      });
+      const text = await resp.text();
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes("cf-chl") || lowerText.includes("challenge-platform") || lowerText.includes("cloudflare ray id") || lowerText.includes("just a moment...")) {
+        this.setState(
+          "CLOUDFLARE_REQUIRED" /* CLOUDFLARE_REQUIRED */,
+          "\u68C0\u6D4B\u5230\u76EE\u6807\u7AD9\u70B9\u542F\u7528\u4E86 Cloudflare \u4EBA\u673A\u9A8C\u8BC1\u9632\u62A4\uFF0C\u8BF7\u5728 EdgeEver \u684C\u9762\u7248\u4E2D\u76F4\u63A5\u6D4F\u89C8\uFF01"
+        );
+        return;
+      }
+      const safeHtml = this.sanitizeAndInjectBase(text, url);
+      this.iframe.srcdoc = safeHtml;
+      this.setState("SUCCESS" /* SUCCESS */);
+    } catch {
+      this.attemptDirectIframeLoad(url);
+    }
+  }
+  attemptDirectIframeLoad(url) {
+    if (!this.iframe || this.isDestroyed) return;
+    let loaded = false;
+    const timeoutTimer = window.setTimeout(() => {
+      if (!loaded && !this.isDestroyed) {
+        this.setState(
+          "BLOCKED" /* BLOCKED */,
+          "\u65E0\u6CD5\u5728 Web iframe \u4E2D\u76F4\u63A5\u5D4C\u5957\u8BE5\u7AD9\u70B9\u3002\u8BF7\u4F7F\u7528 EdgeEver \u684C\u9762\u7248\u4EE5\u83B7\u5F97\u5B8C\u6574\u539F\u751F\u6D4F\u89C8\u5668\u652F\u6301\u3002"
+        );
+      }
+    }, 4500);
+    const onLoad = () => {
+      loaded = true;
+      window.clearTimeout(timeoutTimer);
+      if (!this.isDestroyed) {
+        this.setState("SUCCESS" /* SUCCESS */);
+      }
+    };
+    const onError = () => {
+      loaded = true;
+      window.clearTimeout(timeoutTimer);
+      if (!this.isDestroyed) {
+        this.setState(
+          "BLOCKED" /* BLOCKED */,
+          "\u7AD9\u70B9\u5B89\u5168\u7B56\u7565\u7981\u6B62 iframe \u5D4C\u5165\uFF0C\u8BF7\u5728\u5916\u90E8\u6D4F\u89C8\u5668\u6216\u684C\u9762\u7248\u4E2D\u6253\u5F00\u3002"
+        );
+      }
+    };
+    this.iframe.onload = onLoad;
+    this.iframe.onerror = onError;
+    this.iframe.src = url;
+  }
+  /**
+   * 注入 <base href="..."> 使得相对资源链接正确加载
+   * 仅消除 X-Frame-Options / frame-ancestors 影响，保留其余正常逻辑
+   */
+  sanitizeAndInjectBase(html, originalUrl) {
+    const baseTag = `<base href="${originalUrl}" />`;
+    if (/<head[^>]*>/i.test(html)) {
+      return html.replace(/<head[^>]*>/i, `$&${baseTag}`);
+    }
+    return `${baseTag}${html}`;
+  }
+  destroy() {
+    this.isDestroyed = true;
+    this.abortController?.abort();
+    this.abortController = null;
+    if (this.iframe) {
+      this.iframe.src = "about:blank";
+      this.iframe.remove();
+      this.iframe = null;
+    }
+    this.container = null;
+  }
+};
 
-  function renderCardContent() {
-    card.innerHTML = `
-      <div class="edgeever-web-embed-bar">
-        <!-- 浏览器左侧控件：Mac 三色小圆点 + 刷新按钮 -->
-        <div class="edgeever-web-mac-controls">
-          <span class="edgeever-web-dot red"></span>
-          <span class="edgeever-web-dot yellow"></span>
-          <span class="edgeever-web-dot green"></span>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-reload" title="重新加载当前页面" style="margin-left:4px;">🔄</button>
-        </div>
+// src/services/WebRendererFactory.ts
+var WebRendererFactory = class {
+  static createRenderer(url, title, events, enginePreference = "auto") {
+    const isElectron = isElectronEnvironment();
+    if (enginePreference === "electron" || enginePreference === "auto" && isElectron) {
+      return new ElectronWebViewRenderer(url, title, events);
+    }
+    return new IframeRenderer(url, title, events);
+  }
+};
 
-        <!-- 浏览器中央交互式地址栏 (Omnibox)：可直接在输入框里修改网址按回车前往并自动保存！ -->
-        <div class="edgeever-web-omnibox-wrap" title="直接在此输入新网址并按回车前往">
-          <span class="edgeever-web-lock-icon">🔒</span>
-          <input type="text" class="edgeever-web-omnibox-input" value="${escapeHtml(currentUrl)}" placeholder="输入网址按回车前往 (https://...)" spellcheck="false" />
-        </div>
+// src/components/WebViewport.ts
+var WebViewport = class {
+  cardEl;
+  contentArea;
+  dragMaskEl;
+  currentHeight;
+  currentWidthMode;
+  isFullscreen;
+  resizeObserver = null;
+  onWindowResizeBound;
+  constructor(options) {
+    this.currentHeight = options.initialHeight;
+    this.currentWidthMode = options.initialWidthMode;
+    this.isFullscreen = options.initialFullscreen;
+    const card = document.createElement("div");
+    card.className = "edgeever-web-embed-block";
+    card.style.height = "auto";
+    const contentArea = document.createElement("div");
+    contentArea.className = "edgeever-web-content-area";
+    contentArea.style.height = `${this.currentHeight}px`;
+    contentArea.style.position = "relative";
+    contentArea.style.width = "100%";
+    contentArea.style.overflow = "hidden";
+    const dragMask = document.createElement("div");
+    dragMask.className = "edgeever-web-drag-mask";
+    dragMask.style.display = "none";
+    dragMask.style.position = "absolute";
+    dragMask.style.inset = "0";
+    dragMask.style.zIndex = "999";
+    dragMask.style.background = "transparent";
+    contentArea.appendChild(dragMask);
+    card.appendChild(contentArea);
+    this.cardEl = card;
+    this.contentArea = contentArea;
+    this.dragMaskEl = dragMask;
+    this.onWindowResizeBound = () => {
+      if (!this.isFullscreen) {
+        this.applyBreakoutLayout();
+      }
+    };
+    window.addEventListener("resize", this.onWindowResizeBound);
+    this.initBreakoutObserver();
+  }
+  getCardElement() {
+    return this.cardEl;
+  }
+  getContentArea() {
+    return this.contentArea;
+  }
+  setMaskActive(active) {
+    this.dragMaskEl.style.display = active ? "block" : "none";
+    if (active) {
+      this.cardEl.classList.add("is-resizing");
+    } else {
+      this.cardEl.classList.remove("is-resizing");
+    }
+  }
+  setHeight(height) {
+    this.currentHeight = height;
+    if (!this.isFullscreen) {
+      this.contentArea.style.height = `${height}px`;
+    }
+  }
+  setFullscreen(fullscreen) {
+    this.isFullscreen = fullscreen;
+    if (fullscreen) {
+      this.cardEl.classList.add("is-fullscreen-view");
+      this.contentArea.style.height = "calc(100vh - 38px)";
+    } else {
+      this.cardEl.classList.remove("is-fullscreen-view");
+      this.contentArea.style.height = `${this.currentHeight}px`;
+      this.applyBreakoutLayout();
+    }
+  }
+  setWidthMode(mode) {
+    this.currentWidthMode = mode;
+    this.applyBreakoutLayout();
+  }
+  /**
+   * Editor Breakout Algorithm
+   * 使网页卡片突破默认富文本居中限制，铺满 EdgeEver 编辑器视口全宽，并保留优雅呼吸留白
+   */
+  applyBreakoutLayout() {
+    if (!this.cardEl || !this.cardEl.parentElement || this.isFullscreen) return;
+    if (this.currentWidthMode === "normal") {
+      this.cardEl.style.width = "100%";
+      this.cardEl.style.maxWidth = "100%";
+      this.cardEl.style.marginLeft = "0px";
+      this.cardEl.style.marginRight = "0px";
+      return;
+    }
+    try {
+      const parent = this.cardEl.parentElement;
+      let viewport = this.cardEl.closest(".overflow-y-auto") || this.cardEl.closest(".overflow-auto");
+      if (!viewport) {
+        let cur = parent;
+        while (cur && cur !== document.body) {
+          if (cur.clientWidth > parent.clientWidth + 40) {
+            viewport = cur;
+            break;
+          }
+          cur = cur.parentElement;
+        }
+      }
+      if (viewport) {
+        const viewportRect = viewport.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        const viewportWidth = viewport.clientWidth;
+        if (this.currentWidthMode === "editor") {
+          const targetWidth = Math.max(parentRect.width, viewportWidth - 40);
+          const targetLeft = viewportRect.left + 20;
+          const offset = Math.round(targetLeft - parentRect.left);
+          this.cardEl.style.width = `${targetWidth}px`;
+          this.cardEl.style.maxWidth = `${targetWidth}px`;
+          this.cardEl.style.marginLeft = `${offset}px`;
+          this.cardEl.style.marginRight = "auto";
+        } else if (this.currentWidthMode === "wide") {
+          const maxW = Math.min(1080, viewportWidth - 32);
+          const targetLeft = viewportRect.left + (viewportWidth - maxW) / 2;
+          const offset = Math.round(targetLeft - parentRect.left);
+          this.cardEl.style.width = `${maxW}px`;
+          this.cardEl.style.maxWidth = `${maxW}px`;
+          this.cardEl.style.marginLeft = `${offset}px`;
+          this.cardEl.style.marginRight = "auto";
+        }
+      } else {
+        this.cardEl.style.width = "100%";
+        this.cardEl.style.maxWidth = "100%";
+        this.cardEl.style.marginLeft = "0px";
+        this.cardEl.style.marginRight = "0px";
+      }
+    } catch {
+      this.cardEl.style.width = "100%";
+      this.cardEl.style.maxWidth = "100%";
+      this.cardEl.style.marginLeft = "0px";
+      this.cardEl.style.marginRight = "0px";
+    }
+  }
+  initBreakoutObserver() {
+    if (typeof ResizeObserver === "undefined") return;
+    try {
+      this.resizeObserver = new ResizeObserver(() => {
+        if (!this.isFullscreen) {
+          this.applyBreakoutLayout();
+        }
+      });
+      window.setTimeout(() => {
+        if (this.cardEl.parentElement) {
+          this.resizeObserver?.observe(this.cardEl.parentElement);
+          if (this.cardEl.parentElement.parentElement) {
+            this.resizeObserver?.observe(this.cardEl.parentElement.parentElement);
+          }
+        }
+      }, 50);
+    } catch {
+    }
+  }
+  destroy() {
+    window.removeEventListener("resize", this.onWindowResizeBound);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    this.cardEl.remove();
+  }
+};
 
-        <!-- 浏览器右侧工具：宽度切换、在外部浏览器打开、复制链接、全屏 -->
-        <div class="edgeever-web-embed-actions">
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-width" title="点击切换宽度模式：铺满编辑区 / 宽屏 / 标准正文宽">${getWidthLabel(currentWidthMode)}</button>
-          <a class="edgeever-web-btn-icon edgeever-web-btn-primary edgeever-web-action-link" href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" title="在系统独立浏览器中打开当前网页">🚀 外部打开</a>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-copy" title="复制当前网址链接">📋 复制</button>
-          <button type="button" class="edgeever-web-btn-icon edgeever-web-btn-full" title="沉浸式整页铺满切换">⛶ 铺满</button>
-        </div>
+// src/components/WebToolbar.ts
+var WebToolbar = class {
+  element;
+  inputEl;
+  reloadBtn;
+  backBtn;
+  forwardBtn;
+  widthModeBtn;
+  fullscreenBtn;
+  currentUrl;
+  constructor(options) {
+    this.currentUrl = options.initialUrl;
+    const bar = document.createElement("div");
+    bar.className = "edgeever-web-embed-bar";
+    bar.innerHTML = `
+      <div class="edgeever-web-mac-controls">
+        <span class="edgeever-web-dot red"></span>
+        <span class="edgeever-web-dot yellow"></span>
+        <span class="edgeever-web-dot green"></span>
       </div>
 
-      <div class="edgeever-web-iframe-container" style="height:${currentHeight}px;">
-        <div class="edgeever-web-loading-bar"></div>
-        
-        <!-- 底层浏览器式引导与防白屏容灾卡片 -->
-        <div class="edgeever-web-fallback-pane" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center;background:#0f1217;color:#e2e8f0;z-index:1;box-sizing:border-box;">
-          <div style="width:52px;height:52px;border-radius:14px;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;">
-            🌐
-          </div>
-          <div style="font-size:16px;font-weight:700;color:#f8fafc;margin-bottom:6px;">
-            ${escapeHtml(currentTitle)}
-          </div>
-          <div style="font-size:12px;color:#94a3b8;max-width:460px;line-height:1.6;margin-bottom:20px;">
-            由于此网站配置了严格的防嵌安全策略 (X-Frame-Options: DENY)，禁止在内嵌框架中直接运行。可在上方地址栏输入其他网址，或一键在系统独立浏览器中打开：
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <a href="${escapeHtml(currentUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:#38bdf8;color:#ffffff;border-radius:6px;font-size:12.5px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(56,189,248,0.35);">
-              🚀 立即在系统浏览器中打开
-            </a>
-            <button type="button" class="edgeever-web-btn-icon edgeever-web-fallback-copy" style="padding:7px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#cbd5e1;font-size:12px;cursor:pointer;">
-              📋 复制网址
-            </button>
-          </div>
-        </div>
-
-        <!-- 顶层透明 iframe (支持内嵌的网站直接正常覆盖显示) -->
-        <iframe class="edgeever-web-iframe" style="position:relative;width:100%;height:100%;border:none;background:transparent;z-index:2;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads"></iframe>
+      <div class="edgeever-web-nav-group">
+        <button type="button" class="edgeever-web-btn-nav btn-back" title="\u540E\u9000">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <button type="button" class="edgeever-web-btn-nav btn-forward" title="\u524D\u8FDB">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+        <button type="button" class="edgeever-web-btn-nav btn-reload" title="\u5237\u65B0\u9875\u9762">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
       </div>
 
-      <!-- 底部 Mac 风格拖拽伸缩手柄 -->
-      <div class="edgeever-web-resize-bar" title="按住自由拖拽调节视窗高度 · 双击在自适应屏幕与默认高度间切换">
-        <div class="edgeever-web-resize-pill"></div>
-        <span class="edgeever-web-height-badge">${currentHeight}px</span>
+      <div class="edgeever-web-omnibox-wrap">
+        <span class="edgeever-web-lock-icon">\u{1F512}</span>
+        <input type="text" class="edgeever-web-omnibox-input" spellcheck="false" placeholder="\u8F93\u5165\u7F51\u5740\u6309\u56DE\u8F66\u76F4\u63A5\u8DF3\u8F6C..." />
+      </div>
+
+      <div class="edgeever-web-embed-actions">
+        <button type="button" class="edgeever-web-btn-icon btn-copy" title="\u590D\u5236\u5F53\u524D\u7F51\u5740">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>\u590D\u5236</span>
+        </button>
+        <button type="button" class="edgeever-web-btn-icon btn-width" title="\u5207\u6362\u5BBD\u5EA6\u81EA\u9002\u5E94\u6A21\u5F0F">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+          <span class="width-label">${options.initialWidthMode === "normal" ? "\u5168\u5BBD" : "\u6807\u51C6"}</span>
+        </button>
+        <button type="button" class="edgeever-web-btn-icon btn-fullscreen" title="\u8FDB\u5165\u5168\u5C4F\u6C89\u6D78\u6D4F\u89C8">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+          <span>\u5168\u5C4F</span>
+        </button>
+        <button type="button" class="edgeever-web-btn-icon btn-external" title="\u5728\u5916\u90E8\u9ED8\u8BA4\u6D4F\u89C8\u5668\u4E2D\u6253\u5F00">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          <span>\u6253\u5F00</span>
+        </button>
       </div>
     `;
-
-    bindCardEvents();
+    this.element = bar;
+    this.inputEl = bar.querySelector(".edgeever-web-omnibox-input");
+    this.backBtn = bar.querySelector(".btn-back");
+    this.forwardBtn = bar.querySelector(".btn-forward");
+    this.reloadBtn = bar.querySelector(".btn-reload");
+    this.widthModeBtn = bar.querySelector(".btn-width");
+    this.fullscreenBtn = bar.querySelector(".btn-fullscreen");
+    const copyBtn = bar.querySelector(".btn-copy");
+    const externalBtn = bar.querySelector(".btn-external");
+    this.inputEl.value = this.currentUrl;
+    this.inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const raw = this.inputEl.value.trim();
+        if (raw) {
+          const finalUrl = sanitizeUrl(raw);
+          this.currentUrl = finalUrl;
+          this.inputEl.value = finalUrl;
+          this.inputEl.blur();
+          options.onNavigate(finalUrl);
+        }
+      } else if (e.key === "Escape") {
+        this.inputEl.value = this.currentUrl;
+        this.inputEl.blur();
+      }
+    });
+    this.inputEl.addEventListener("focus", () => {
+      this.inputEl.select();
+    });
+    this.backBtn.addEventListener("click", () => options.onGoBack());
+    this.forwardBtn.addEventListener("click", () => options.onGoForward());
+    this.reloadBtn.addEventListener("click", () => options.onReload());
+    this.widthModeBtn.addEventListener("click", () => options.onToggleWidthMode());
+    this.fullscreenBtn.addEventListener("click", () => options.onToggleFullscreen());
+    copyBtn.addEventListener("click", () => options.onCopyUrl());
+    externalBtn.addEventListener("click", () => options.onOpenExternal());
   }
-
-  function bindCardEvents() {
-    const omnibox = card.querySelector(".edgeever-web-omnibox-input");
-    const widthBtn = card.querySelector(".edgeever-web-btn-width");
-    const reloadBtn = card.querySelector(".edgeever-web-btn-reload");
-    const copyBtn = card.querySelector(".edgeever-web-btn-copy");
-    const fallbackCopyBtn = card.querySelector(".edgeever-web-fallback-copy");
-    const fullBtn = card.querySelector(".edgeever-web-btn-full");
-    const iframe = card.querySelector(".edgeever-web-iframe");
-    const loadingBar = card.querySelector(".edgeever-web-loading-bar");
-    const resizeBar = card.querySelector(".edgeever-web-resize-bar");
-    const containerEl = card.querySelector(".edgeever-web-iframe-container");
-    const heightBadge = card.querySelector(".edgeever-web-height-badge");
-
-    // 立即应用当前宽度自适应布局
-    applyCardLayout(card, currentWidthMode);
-
-    // 加载当前 URL
-    if (iframe) {
-      loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
+  getElement() {
+    return this.element;
+  }
+  updateUrl(url) {
+    this.currentUrl = url;
+    if (document.activeElement !== this.inputEl) {
+      this.inputEl.value = url;
     }
-
-    // 🌟 像浏览器一样：在地址栏输入新网址并按回车跳转！
-    if (omnibox) {
-      omnibox.onkeydown = (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          e.stopPropagation();
-          const target = omnibox.value.trim();
-          if (!target) return;
-
-          const oldUrl = currentUrl;
-          currentUrl = sanitizeUrl(target);
-          omnibox.value = currentUrl;
-          try {
-            currentTitle = new URL(currentUrl).hostname || currentUrl;
-          } catch (_) {
-            currentTitle = currentUrl;
-          }
-
-          // 持久化保存到笔记文档
-          updateEmbedAttributesInDoc(embedId, oldUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
-
-          // 重新载入网页
-          if (iframe) {
-            loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
-          }
-          omnibox.blur();
-        } else if (e.key === "Escape") {
-          omnibox.value = currentUrl;
-          omnibox.blur();
-        }
-      };
-
-      // 点击地址栏全选网址
-      omnibox.onfocus = () => {
-        setTimeout(() => omnibox.select(), 50);
-      };
+  }
+  updateWidthMode(mode) {
+    const label = this.widthModeBtn.querySelector(".width-label");
+    if (label) {
+      label.textContent = mode === "normal" ? "\u5168\u5BBD" : "\u6807\u51C6";
     }
-
-    // 刷新按钮
-    if (reloadBtn) {
-      reloadBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (iframe) loadUrlIntoIframe(card, iframe, currentUrl, loadingBar);
-      };
+  }
+  updateFullscreen(isFullscreen) {
+    const span = this.fullscreenBtn.querySelector("span");
+    if (span) {
+      span.textContent = isFullscreen ? "\u9000\u51FA" : "\u5168\u5C4F";
     }
-
-    // 快捷宽度模式切换
-    if (widthBtn) {
-      widthBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (currentWidthMode === "editor") {
-          currentWidthMode = "wide";
-        } else if (currentWidthMode === "wide") {
-          currentWidthMode = "normal";
-        } else {
-          currentWidthMode = "editor";
-        }
-        widthBtn.textContent = getWidthLabel(currentWidthMode);
-        applyCardLayout(card, currentWidthMode);
-        updateEmbedAttributesInDoc(embedId, currentUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
-      };
+  }
+  setLoading(isLoading) {
+    if (isLoading) {
+      this.reloadBtn.classList.add("is-loading");
+    } else {
+      this.reloadBtn.classList.remove("is-loading");
     }
+  }
+};
 
-    // 复制网址
-    const doCopy = async (btn) => {
-      try {
-        await navigator.clipboard.writeText(currentUrl);
-        const originText = btn.textContent;
-        btn.textContent = "✅ 已复制";
-        setTimeout(() => { btn.textContent = originText; }, 1500);
-      } catch (_) {}
-    };
-
-    if (copyBtn) {
-      copyBtn.onclick = (e) => {
-        e.stopPropagation();
-        doCopy(copyBtn);
-      };
-    }
-
-    if (fallbackCopyBtn) {
-      fallbackCopyBtn.onclick = (e) => {
-        e.stopPropagation();
-        doCopy(fallbackCopyBtn);
-      };
-    }
-
-    // 沉浸整页铺满
-    if (fullBtn) {
-      fullBtn.onclick = (e) => {
-        e.stopPropagation();
-        const isFull = card.classList.toggle("is-fullscreen-view");
-        fullBtn.textContent = isFull ? "🗗 还原" : "⛶ 铺满";
-        if (!isFull) {
-          applyCardLayout(card, currentWidthMode);
-        } else {
-          card.style.width = "100%";
-          card.style.maxWidth = "100%";
-          card.style.marginLeft = "0px";
-        }
-      };
-    }
-
-    // 拖拽伸缩自由调节高度（彻底防止 iframe 捕获事件）
+// src/components/ResizeHandle.ts
+var ResizeHandle = class {
+  element;
+  currentHeight;
+  constructor(options) {
+    this.currentHeight = options.initialHeight;
+    this.element = this.createHandle(options);
+  }
+  getElement() {
+    return this.element;
+  }
+  createHandle(opts) {
+    const minH = opts.minHeight ?? 240;
+    const maxH = opts.maxHeight ?? 2400;
+    const handle = document.createElement("div");
+    handle.className = "edgeever-web-resize-handle";
+    handle.title = "\u6309\u4F4F\u4E0A\u4E0B\u62D6\u62FD\u8C03\u8282\u89C6\u7A97\u9AD8\u5EA6";
+    handle.innerHTML = `
+      <div class="edgeever-web-resize-bar"></div>
+    `;
     let startY = 0;
-    let startHeight = 0;
-    let dragCurrentHeight = currentHeight;
-
-    const onMouseMove = (ev) => {
-      const deltaY = ev.clientY - startY;
-      dragCurrentHeight = Math.max(300, startHeight + deltaY);
-      containerEl.style.height = `${dragCurrentHeight}px`;
-      if (heightBadge) {
-        heightBadge.textContent = `${dragCurrentHeight}px`;
-        heightBadge.style.opacity = "1";
-      }
+    let startH = this.currentHeight;
+    let isDragging = false;
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const deltaY = e.clientY - startY;
+      const nextH = Math.min(maxH, Math.max(minH, Math.round(startH + deltaY)));
+      this.currentHeight = nextH;
+      opts.onHeightChange(nextH);
     };
-
     const onMouseUp = () => {
-      resizeBar.classList.remove("is-dragging");
-      // 恢复 iframe 交互与页面样式
-      if (iframe) iframe.style.pointerEvents = "auto";
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-
-      if (heightBadge) {
-        setTimeout(() => { heightBadge.style.opacity = "0"; }, 600);
-      }
-
+      if (!isDragging) return;
+      isDragging = false;
+      opts.setMaskActive(false);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-
-      // 持久化保存新高度
-      currentHeight = dragCurrentHeight;
-      updateEmbedAttributesInDoc(embedId, currentUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+      opts.onResizeEnd(this.currentHeight);
     };
-
-    resizeBar.onmousedown = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      startY = ev.clientY;
-      startHeight = containerEl.offsetHeight;
-      dragCurrentHeight = startHeight;
-      resizeBar.classList.add("is-dragging");
-
-      // 关键！禁用 iframe pointer-events，防止鼠标划入 iframe 导致拖拽中断卡死
-      if (iframe) iframe.style.pointerEvents = "none";
+    handle.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      startY = e.clientY;
+      startH = this.currentHeight;
+      opts.setMaskActive(true);
       document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
-
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", onMouseUp);
-    };
-
-    // 双击把手快速切换：撑满屏幕高度 vs 恢复 720px
-    resizeBar.ondblclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const screenFitHeight = Math.max(500, window.innerHeight - 180);
-      if (Math.abs(containerEl.offsetHeight - screenFitHeight) < 40) {
-        currentHeight = 720;
-      } else {
-        currentHeight = screenFitHeight;
-      }
-      containerEl.style.height = `${currentHeight}px`;
-      if (heightBadge) heightBadge.textContent = `${currentHeight}px`;
-      updateEmbedAttributesInDoc(embedId, currentUrl, currentTitle, currentUrl, currentHeight, currentWidthMode);
-    };
+    });
+    return handle;
   }
+};
 
-  renderCardContent();
-  container.appendChild(card);
-
-  // 初次与延迟应用全宽布局
-  applyCardLayout(card, currentWidthMode);
-  setTimeout(() => applyCardLayout(card, currentWidthMode), 60);
-  setTimeout(() => applyCardLayout(card, currentWidthMode), 200);
-
-  // 监听尺寸变化以自适应编辑器宽度
-  let resizeObserver = null;
-  if (window.ResizeObserver) {
-    try {
-      resizeObserver = new ResizeObserver(() => {
-        if (!card.classList.contains("is-fullscreen-view")) {
-          applyCardLayout(card, currentWidthMode);
-        }
-      });
-      if (card.parentElement) {
-        resizeObserver.observe(card.parentElement);
-        if (card.parentElement.parentElement) {
-          resizeObserver.observe(card.parentElement.parentElement);
-        }
-      }
-    } catch (_) {}
+// src/components/FallbackCard.ts
+var FallbackCard = class {
+  element;
+  constructor(options) {
+    this.element = this.createCard(options);
   }
-
-  const onWindowResize = () => {
-    if (!card.classList.contains("is-fullscreen-view")) {
-      applyCardLayout(card, currentWidthMode);
+  getElement() {
+    return this.element;
+  }
+  createCard(opts) {
+    const card = document.createElement("div");
+    card.className = "edgeever-web-fallback-card";
+    const hostname = extractHostname(opts.url, "\u76EE\u6807\u7AD9\u70B9");
+    let icon = "\u26A0\uFE0F";
+    let title = "\u9875\u9762\u6682\u65F6\u65E0\u6CD5\u52A0\u8F7D";
+    let description = "\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u6216\u76EE\u6807\u7F51\u7AD9\u53EF\u7528\u6027\u3002";
+    let badge = "\u7F51\u7EDC\u9519\u8BEF";
+    let badgeColor = "#ef4444";
+    switch (opts.state) {
+      case "CLOUDFLARE_REQUIRED" /* CLOUDFLARE_REQUIRED */:
+        icon = "\u{1F6E1}\uFE0F";
+        title = "\u9700\u5B8C\u6574\u6D4F\u89C8\u5668\u5185\u6838\u6E32\u67D3";
+        description = "\u5F53\u524D\u7AD9\u70B9\u542F\u7528\u4E86 Cloudflare \u4EBA\u673A\u9A8C\u8BC1\u6216\u9AD8\u7EA7\u5B89\u5168\u9632\u62A4\uFF0CWeb \u7248\u6C99\u7BB1\u73AF\u5883\u65E0\u6CD5\u7A7F\u900F\u3002\u8BF7\u5728 EdgeEver \u684C\u9762\u7248\u4E2D\u76F4\u63A5\u6D4F\u89C8\uFF01";
+        badge = "Cloudflare \u9632\u62A4";
+        badgeColor = "#f59e0b";
+        break;
+      case "BLOCKED" /* BLOCKED */:
+        icon = "\u{1F512}";
+        title = "\u7AD9\u70B9\u9650\u5236 iframe \u5D4C\u5957\u6D4F\u89C8";
+        description = `\u7AD9\u70B9 [${hostname}] \u914D\u7F6E\u4E86\u4E25\u683C\u7684\u5B89\u5168\u9632\u62A4\u7B56\u7565\uFF08\u5982 frame-ancestors / X-Frame-Options: DENY\uFF09\u3002\u5728 EdgeEver \u684C\u9762\u7248\u4E2D\u5C06\u81EA\u52A8\u542F\u7528\u539F\u751F Chromium \u5185\u6838\u6D41\u7545\u6D4F\u89C8\u3002`;
+        badge = "\u8DE8\u57DF\u5B89\u5168\u7B56\u7565\u9650\u5236";
+        badgeColor = "#38bdf8";
+        break;
+      case "FAILED" /* FAILED */:
+      default:
+        icon = "\u{1F50C}";
+        title = "\u8FDE\u63A5\u4E2D\u65AD\u6216\u52A0\u8F7D\u5931\u8D25";
+        description = opts.detail ? `\u9519\u8BEF\u8BE6\u60C5\uFF1A${opts.detail}` : "\u76EE\u6807\u670D\u52A1\u5668\u54CD\u5E94\u5F02\u5E38\u6216\u5F53\u524D\u7F51\u7EDC\u73AF\u5883\u53D7\u963B\u3002";
+        badge = "\u52A0\u8F7D\u5F02\u5E38";
+        badgeColor = "#f43f5e";
+        break;
     }
-  };
-  window.addEventListener("resize", onWindowResize);
+    card.innerHTML = `
+      <div class="edgeever-web-fallback-inner">
+        <div class="edgeever-web-fallback-badge" style="border-color:${badgeColor};color:${badgeColor}">
+          ${badge}
+        </div>
+        <div class="edgeever-web-fallback-icon">${icon}</div>
+        <h3 class="edgeever-web-fallback-title">${title}</h3>
+        <p class="edgeever-web-fallback-desc">${description}</p>
+        
+        <div class="edgeever-web-fallback-url-preview">
+          <span class="url-label">\u76EE\u6807\u5730\u5740:</span>
+          <span class="url-text">${opts.url}</span>
+        </div>
 
+        <div class="edgeever-web-fallback-actions">
+          <button type="button" class="fallback-btn fallback-btn-primary action-open">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            \u5728\u5916\u90E8\u6D4F\u89C8\u5668\u4E2D\u6253\u5F00
+          </button>
+          <button type="button" class="fallback-btn fallback-btn-secondary action-retry">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            \u91CD\u65B0\u5C1D\u8BD5
+          </button>
+          <button type="button" class="fallback-btn fallback-btn-ghost action-copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            \u590D\u5236\u94FE\u63A5
+          </button>
+        </div>
+      </div>
+    `;
+    const btnOpen = card.querySelector(".action-open");
+    const btnRetry = card.querySelector(".action-retry");
+    const btnCopy = card.querySelector(".action-copy");
+    btnOpen?.addEventListener("click", () => opts.onOpenExternal());
+    btnRetry?.addEventListener("click", () => opts.onRetry());
+    btnCopy?.addEventListener("click", () => opts.onCopyUrl());
+    return card;
+  }
+};
+
+// src/components/InsertDialog.ts
+var InsertDialog = class {
+  static activeModal = null;
+  static show(onConfirm) {
+    this.close();
+    const backdrop = document.createElement("div");
+    backdrop.className = "edgeever-web-modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="edgeever-web-modal">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <span style="font-weight:700;font-size:14px;color:#f8fafc;display:flex;align-items:center;gap:6px;">
+            \u{1F310} \u63D2\u5165\u771F\u5B9E\u6D4F\u89C8\u5668\u89C6\u7A97 (Web Embed)
+          </span>
+          <button type="button" class="edgeever-web-modal-close" style="background:none;border:none;color:#94a3b8;font-size:17px;cursor:pointer;padding:0 4px;">\u2715</button>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:11.5px;color:#94a3b8;margin-bottom:5px;">\u76EE\u6807\u7F51\u9875\u5730\u5740 (URL)</label>
+          <input type="text" class="edgeever-web-input-url" placeholder="https://github.com" style="width:100%;box-sizing:border-box;padding:8px 10px;background:#0f172a;border:1px solid rgba(255,255,255,0.16);border-radius:6px;color:#f8fafc;font-size:13px;outline:none;" />
+        </div>
+
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:16px;line-height:1.5;">
+          \u{1F4A1} \u63D0\u793A\uFF1A\u6309\u56DE\u8F66\u5373\u53EF\u63D2\u5165\u3002\u53EF\u5728\u7B14\u8BB0\u4EFB\u610F\u4F4D\u7F6E\u968F\u65F6\u8F93\u5165 <code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:3px;">/web</code> \u6216\u6309 <code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:3px;">Alt+W</code> \u5524\u51FA\u6B64\u5F39\u7A97\u3002
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button type="button" class="edgeever-web-modal-cancel" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#e2e8f0;font-size:12px;cursor:pointer;">\u53D6\u6D88</button>
+          <button type="button" class="edgeever-web-modal-confirm" style="padding:6px 16px;background:#38bdf8;border:none;border-radius:5px;color:#0f172a;font-size:12px;font-weight:600;cursor:pointer;">\u7ACB\u5373\u63D2\u5165</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    this.activeModal = backdrop;
+    const input = backdrop.querySelector(".edgeever-web-input-url");
+    const closeBtn = backdrop.querySelector(".edgeever-web-modal-close");
+    const cancelBtn = backdrop.querySelector(".edgeever-web-modal-cancel");
+    const confirmBtn = backdrop.querySelector(".edgeever-web-modal-confirm");
+    if (navigator.clipboard?.readText && input) {
+      navigator.clipboard.readText().then((clip) => {
+        if (clip && /^https?:\/\//i.test(clip.trim())) {
+          input.value = clip.trim();
+          input.select();
+        }
+      }).catch(() => {
+      });
+    }
+    window.setTimeout(() => input?.focus(), 60);
+    const handleConfirm = () => {
+      if (!input) return;
+      const raw = input.value.trim();
+      if (!raw) {
+        input.focus();
+        return;
+      }
+      const finalUrl = sanitizeUrl(raw);
+      this.close();
+      onConfirm(finalUrl);
+    };
+    closeBtn?.addEventListener("click", () => this.close());
+    cancelBtn?.addEventListener("click", () => this.close());
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) this.close();
+    });
+    confirmBtn?.addEventListener("click", handleConfirm);
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleConfirm();
+      } else if (e.key === "Escape") {
+        this.close();
+      }
+    });
+  }
+  static close() {
+    if (this.activeModal) {
+      this.activeModal.remove();
+      this.activeModal = null;
+    }
+  }
+};
+
+// src/index.ts
+var pluginContext = null;
+var injectedStyleEl = null;
+function ensureInjectedStyle() {
+  if (document.getElementById("edgeever-web-companion-injected-style")) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = "edgeever-web-companion-injected-style";
+  style.textContent = `
+    .edgeever-web-embed-block {
+      display: block !important;
+      width: 100% !important;
+      margin: 18px 0 !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 10px !important;
+      background: #0f1217 !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+      user-select: none !important;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease, margin 0.2s ease !important;
+      position: relative !important;
+    }
+    .edgeever-web-embed-block:hover {
+      border-color: rgba(56, 189, 248, 0.3) !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55) !important;
+    }
+    .edgeever-web-embed-block.is-resizing {
+      user-select: none !important;
+    }
+    .edgeever-web-embed-block.is-resizing iframe,
+    .edgeever-web-embed-block.is-resizing webview {
+      pointer-events: none !important;
+    }
+    .edgeever-web-embed-bar {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      height: 38px !important;
+      padding: 0 12px !important;
+      background: rgba(22, 27, 34, 0.96) !important;
+      backdrop-filter: blur(16px) !important;
+      -webkit-backdrop-filter: blur(16px) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+      gap: 10px !important;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+      box-sizing: border-box !important;
+    }
+    .edgeever-web-mac-controls {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      flex-shrink: 0 !important;
+    }
+    .edgeever-web-dot {
+      width: 9px !important;
+      height: 9px !important;
+      border-radius: 50% !important;
+      display: inline-block !important;
+      opacity: 0.8 !important;
+    }
+    .edgeever-web-dot.red { background: #ff5f56 !important; }
+    .edgeever-web-dot.yellow { background: #ffbd2e !important; }
+    .edgeever-web-dot.green { background: #27c93f !important; }
+    .edgeever-web-nav-group {
+      display: flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+      flex-shrink: 0 !important;
+    }
+    .edgeever-web-btn-nav {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 24px !important;
+      height: 24px !important;
+      border-radius: 4px !important;
+      border: none !important;
+      background: transparent !important;
+      color: #94a3b8 !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+    .edgeever-web-btn-nav:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+      color: #f8fafc !important;
+    }
+    .edgeever-web-btn-nav.is-loading {
+      animation: edgeever-web-spin 1s linear infinite !important;
+      color: #38bdf8 !important;
+    }
+    @keyframes edgeever-web-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .edgeever-web-omnibox-wrap {
+      flex: 1 !important;
+      max-width: 640px !important;
+      min-width: 180px !important;
+      display: flex !important;
+      align-items: center !important;
+      background: rgba(0, 0, 0, 0.35) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 6px !important;
+      padding: 2px 8px !important;
+      transition: all 0.2s ease !important;
+      gap: 6px !important;
+    }
+    .edgeever-web-omnibox-wrap:focus-within {
+      border-color: #38bdf8 !important;
+      background: rgba(0, 0, 0, 0.55) !important;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+    }
+    .edgeever-web-lock-icon {
+      font-size: 11px !important;
+      color: #38bdf8 !important;
+      opacity: 0.85 !important;
+      flex-shrink: 0 !important;
+    }
+    .edgeever-web-omnibox-input {
+      flex: 1 !important;
+      min-width: 0 !important;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      font-size: 12px !important;
+      color: #e2e8f0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+      padding: 2px 0 !important;
+    }
+    .edgeever-web-embed-actions {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 4px !important;
+      flex-shrink: 0 !important;
+    }
+    .edgeever-web-btn-icon {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      height: 24px !important;
+      padding: 0 7px !important;
+      background: transparent !important;
+      border: 1px solid transparent !important;
+      border-radius: 4px !important;
+      color: #94a3b8 !important;
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      transition: all 0.15s ease !important;
+    }
+    .edgeever-web-btn-icon:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #f8fafc !important;
+    }
+    .edgeever-web-resize-handle {
+      height: 12px !important;
+      background: #11141a !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: row-resize !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+      transition: background 0.15s ease !important;
+    }
+    .edgeever-web-resize-handle:hover {
+      background: #1e2430 !important;
+    }
+    .edgeever-web-resize-bar {
+      width: 36px !important;
+      height: 3px !important;
+      border-radius: 2px !important;
+      background: rgba(255, 255, 255, 0.22) !important;
+    }
+    .edgeever-web-fallback-card {
+      position: absolute !important;
+      inset: 0 !important;
+      background: radial-gradient(circle at 50% 30%, #171d29 0%, #0c0f14 100%) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 24px !important;
+      box-sizing: border-box !important;
+      z-index: 50 !important;
+    }
+    .edgeever-web-fallback-inner {
+      max-width: 480px !important;
+      width: 100% !important;
+      background: rgba(22, 27, 34, 0.85) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 12px !important;
+      padding: 24px !important;
+      text-align: center !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
+      backdrop-filter: blur(20px) !important;
+    }
+    .edgeever-web-fallback-badge {
+      display: inline-block !important;
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      padding: 2px 8px !important;
+      border-radius: 12px !important;
+      border: 1px solid !important;
+      margin-bottom: 12px !important;
+      text-transform: uppercase !important;
+    }
+    .edgeever-web-fallback-icon {
+      font-size: 32px !important;
+      margin-bottom: 8px !important;
+    }
+    .edgeever-web-fallback-title {
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      color: #f8fafc !important;
+      margin: 0 0 8px 0 !important;
+    }
+    .edgeever-web-fallback-desc {
+      font-size: 13px !important;
+      color: #94a3b8 !important;
+      line-height: 1.5 !important;
+      margin: 0 0 16px 0 !important;
+    }
+    .edgeever-web-fallback-url-preview {
+      background: rgba(0, 0, 0, 0.35) !important;
+      border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-radius: 6px !important;
+      padding: 6px 10px !important;
+      font-size: 11px !important;
+      color: #cbd5e1 !important;
+      word-break: break-all !important;
+      margin-bottom: 18px !important;
+      display: flex !important;
+      gap: 6px !important;
+      align-items: center !important;
+      text-align: left !important;
+    }
+    .edgeever-web-fallback-url-preview .url-label {
+      color: #64748b !important;
+      flex-shrink: 0 !important;
+    }
+    .edgeever-web-fallback-actions {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 8px !important;
+      justify-content: center !important;
+    }
+    .fallback-btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 7px 14px !important;
+      border-radius: 6px !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      border: 1px solid transparent !important;
+      transition: all 0.15s ease !important;
+    }
+    .fallback-btn-primary {
+      background: #38bdf8 !important;
+      color: #0f172a !important;
+      font-weight: 600 !important;
+    }
+    .fallback-btn-primary:hover {
+      background: #7dd3fc !important;
+    }
+    .fallback-btn-secondary {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #e2e8f0 !important;
+      border-color: rgba(255, 255, 255, 0.12) !important;
+    }
+    .fallback-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14) !important;
+    }
+    .fallback-btn-ghost {
+      background: transparent !important;
+      color: #94a3b8 !important;
+    }
+    .fallback-btn-ghost:hover {
+      color: #f8fafc !important;
+    }
+    .edgeever-web-modal-backdrop {
+      position: fixed !important;
+      inset: 0 !important;
+      background: rgba(0, 0, 0, 0.65) !important;
+      backdrop-filter: blur(6px) !important;
+      z-index: 99999 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .edgeever-web-modal {
+      width: 440px !important;
+      background: #161b22 !important;
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+      padding: 20px !important;
+      box-sizing: border-box !important;
+      color: #f8fafc !important;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important;
+    }
+  `;
+  document.head.appendChild(style);
+  injectedStyleEl = style;
+}
+function mountBrowserCard(container, embedInput) {
+  const currentAttrs = EmbedStore.parseAttrs(embedInput);
+  const embedId = (embedInput && typeof embedInput === "object" ? embedInput.id : "") || "";
+  let oldUrl = currentAttrs.url;
+  const viewport = new WebViewport({
+    initialHeight: currentAttrs.height,
+    initialWidthMode: currentAttrs.widthMode,
+    initialFullscreen: currentAttrs.fullscreen
+  });
+  const card = viewport.getCardElement();
+  const contentArea = viewport.getContentArea();
+  let fallbackCardInstance = null;
+  const renderer = WebRendererFactory.createRenderer(
+    currentAttrs.url,
+    currentAttrs.title,
+    {
+      onStateChange: (state, detail) => {
+        toolbar.setLoading(state === "LOADING" /* LOADING */);
+        if (state === "FAILED" /* FAILED */ || state === "BLOCKED" /* BLOCKED */ || state === "CLOUDFLARE_REQUIRED" /* CLOUDFLARE_REQUIRED */) {
+          if (fallbackCardInstance) {
+            fallbackCardInstance.getElement().remove();
+          }
+          fallbackCardInstance = new FallbackCard({
+            url: renderer.getURL(),
+            state,
+            detail,
+            onRetry: () => {
+              if (fallbackCardInstance) {
+                fallbackCardInstance.getElement().remove();
+                fallbackCardInstance = null;
+              }
+              renderer.reload();
+            },
+            onOpenExternal: () => {
+              window.open(renderer.getURL(), "_blank");
+            },
+            onCopyUrl: () => {
+              navigator.clipboard?.writeText(renderer.getURL());
+            }
+          });
+          contentArea.appendChild(fallbackCardInstance.getElement());
+        } else if (state === "SUCCESS" /* SUCCESS */) {
+          if (fallbackCardInstance) {
+            fallbackCardInstance.getElement().remove();
+            fallbackCardInstance = null;
+          }
+        }
+      },
+      onUrlChange: (newUrl) => {
+        toolbar.updateUrl(newUrl);
+        currentAttrs.url = newUrl;
+        currentAttrs.title = renderer.getTitle() || extractHostname(newUrl, "Web View");
+        EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
+        oldUrl = newUrl;
+      },
+      onTitleChange: (newTitle) => {
+        currentAttrs.title = newTitle;
+        EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
+      }
+    },
+    currentAttrs.engine
+  );
+  const toolbar = new WebToolbar({
+    initialUrl: currentAttrs.url,
+    initialWidthMode: currentAttrs.widthMode,
+    initialFullscreen: currentAttrs.fullscreen,
+    onNavigate: (url) => {
+      renderer.loadURL(url);
+    },
+    onReload: () => {
+      renderer.reload();
+    },
+    onGoBack: () => {
+      renderer.goBack();
+    },
+    onGoForward: () => {
+      renderer.goForward();
+    },
+    onToggleWidthMode: () => {
+      const nextMode = currentAttrs.widthMode === "editor" ? "normal" : "editor";
+      currentAttrs.widthMode = nextMode;
+      viewport.setWidthMode(nextMode);
+      toolbar.updateWidthMode(nextMode);
+      EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
+    },
+    onToggleFullscreen: () => {
+      const nextFs = !currentAttrs.fullscreen;
+      currentAttrs.fullscreen = nextFs;
+      viewport.setFullscreen(nextFs);
+      toolbar.updateFullscreen(nextFs);
+      EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
+    },
+    onOpenExternal: () => {
+      window.open(renderer.getURL(), "_blank");
+    },
+    onCopyUrl: () => {
+      navigator.clipboard?.writeText(renderer.getURL());
+    }
+  });
+  const resizeHandle = new ResizeHandle({
+    initialHeight: currentAttrs.height,
+    onHeightChange: (h) => {
+      viewport.setHeight(h);
+    },
+    onResizeEnd: (h) => {
+      currentAttrs.height = h;
+      EmbedStore.updateEmbedAttributesInDoc(pluginContext, embedId, oldUrl, currentAttrs);
+    },
+    setMaskActive: (active) => {
+      viewport.setMaskActive(active);
+    }
+  });
+  card.insertBefore(toolbar.getElement(), contentArea);
+  card.appendChild(resizeHandle.getElement());
+  container.innerHTML = "";
+  container.appendChild(card);
+  renderer.mount(contentArea);
+  window.setTimeout(() => {
+    viewport.applyBreakoutLayout();
+  }, 30);
   return () => {
-    if (resizeObserver) resizeObserver.disconnect();
-    window.removeEventListener("resize", onWindowResize);
+    renderer.destroy();
+    viewport.destroy();
     container.innerHTML = "";
   };
 }
-
-// ==================== 7. 插入网页输入弹窗 ====================
-
-let insertModalEl = null;
-
-function promptInsertWebUrl(onConfirmCallback) {
-  if (insertModalEl) insertModalEl.remove();
-
-  insertModalEl = document.createElement("div");
-  insertModalEl.className = "edgeever-web-modal-backdrop";
-  insertModalEl.innerHTML = `
-    <div class="edgeever-web-modal">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <span style="font-weight:700;font-size:14px;color:#f8fafc;display:flex;align-items:center;gap:6px;">
-          🌐 插入网页视窗 (Web Embed)
-        </span>
-        <button type="button" class="edgeever-web-modal-close" style="background:none;border:none;color:#94a3b8;font-size:17px;cursor:pointer;padding:0 4px;">✕</button>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <label style="display:block;font-size:11.5px;color:#94a3b8;margin-bottom:5px;">目标网页地址 (URL)</label>
-        <input type="text" class="edgeever-web-input-url" placeholder="https://example.com" style="width:100%;box-sizing:border-box;padding:8px 10px;background:#0f172a;border:1px solid rgba(255,255,255,0.16);border-radius:6px;color:#f8fafc;font-size:13px;outline:none;" />
-      </div>
-
-      <div style="font-size:11px;color:#94a3b8;margin-bottom:16px;line-height:1.5;">
-        💡 提示：按回车即可插入。可在笔记任意位置随时输入 <code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:3px;">/web</code> 或按 <code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:3px;">Alt+W</code> 唤出此弹窗。
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;gap:8px;">
-        <button type="button" class="edgeever-web-modal-cancel" style="padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:5px;color:#e2e8f0;font-size:12px;cursor:pointer;">取消</button>
-        <button type="button" class="edgeever-web-modal-confirm" style="padding:6px 16px;background:#38bdf8;border:none;border-radius:5px;color:#ffffff;font-size:12px;font-weight:600;cursor:pointer;">立即插入</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(insertModalEl);
-
-  const input = insertModalEl.querySelector(".edgeever-web-input-url");
-  const closeBtn = insertModalEl.querySelector(".edgeever-web-modal-close");
-  const cancelBtn = insertModalEl.querySelector(".edgeever-web-modal-cancel");
-  const confirmBtn = insertModalEl.querySelector(".edgeever-web-modal-confirm");
-
-  // 尝试读取剪贴板中的链接
-  if (navigator.clipboard?.readText) {
-    navigator.clipboard.readText().then((clip) => {
-      if (clip && /^https?:\/\//i.test(clip.trim())) {
-        input.value = clip.trim();
-        input.select();
-      }
-    }).catch(() => {});
-  }
-
-  setTimeout(() => input?.focus(), 60);
-
-  const doClose = () => {
-    if (insertModalEl) {
-      insertModalEl.remove();
-      insertModalEl = null;
-    }
+async function executeInsertWeb(targetUrl) {
+  const domain = extractHostname(targetUrl, "Web View");
+  const defaultAttrs = {
+    url: targetUrl,
+    title: domain,
+    height: 720,
+    fullscreen: false,
+    engine: "auto",
+    widthMode: "editor"
   };
-
-  closeBtn.onclick = doClose;
-  cancelBtn.onclick = doClose;
-  insertModalEl.onclick = (e) => { if (e.target === insertModalEl) doClose(); };
-
-  const handleConfirm = () => {
-    const raw = input.value.trim();
-    if (!raw) {
-      input.focus();
-      return;
-    }
-    const finalUrl = sanitizeUrl(raw);
-    doClose();
-    if (onConfirmCallback) {
-      onConfirmCallback(finalUrl);
-    }
-  };
-
-  confirmBtn.onclick = handleConfirm;
-  input.onkeydown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleConfirm();
-    } else if (e.key === "Escape") {
-      doClose();
-    }
-  };
-}
-
-// ==================== 8. 插件激活与核心生命周期 ====================
-
-export default {
-  activate(context) {
-    pluginContext = context;
-    ensureInjectedStyle();
-
-    // 1. 注册官方原生嵌入渲染器 (深度兼容 web-view 与 web-companion，支持 mount 与 render)
-    if (context.editor?.embeds?.register) {
-      const rendererDef = {
-        type: "web-view",
-        title: "网页视窗 (Web Embed)",
-        mount(container, embedData) {
-          return mountWebCompanionCard(container, embedData);
-        },
-        render(container, embedData) {
-          return mountWebCompanionCard(container, embedData);
-        },
-      };
-
-      try {
-        context.editor.embeds.register(rendererDef);
-        console.log("[Web Companion] Registered 'web-view' renderer successfully.");
-      } catch (err) {
-        console.warn("[Web Companion] Register 'web-view' failed:", err);
-      }
-
-      try {
-        context.editor.embeds.register({
-          ...rendererDef,
-          type: "web-companion",
-        });
-        console.log("[Web Companion] Registered 'web-companion' renderer successfully.");
-      } catch (_) {}
-    }
-
-    // 2. 核心插入执行逻辑 (三重容灾插入系统)
-    async function executeInsertWeb(targetUrl) {
-      let domain = "Web View";
-      try {
-        domain = new URL(targetUrl).hostname || "Web View";
-      } catch (_) {}
-
-      const height = 720;
-      const widthMode = "editor";
-
-      // 方案 A：调用官方 context.editor.insertEmbed
-      if (context.editor?.insertEmbed) {
-        try {
-          await context.editor.insertEmbed({
-            type: "web-view",
-            resourceId: targetUrl,
-            title: domain,
-            data: { url: targetUrl, title: domain, height, widthMode },
-          });
-          return;
-        } catch (err) {
-          console.warn("[Web Companion] insertEmbed failed, fallback to tiptap:", err);
-        }
-      }
-
-      // 方案 B：使用 Tiptap editor 实例直接插入
-      const editor = getEditorInstance();
-      if (editor?.commands?.insertContent) {
-        try {
-          const embedId = `embed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-          editor.commands.insertContent({
-            type: "edgeeverPluginEmbed",
-            attrs: {
-              id: embedId,
-              pluginId: "org.edgeever.plugins.web-companion",
-              type: "web-view",
-              resourceId: targetUrl,
-              title: domain,
-              dataJson: JSON.stringify({ url: targetUrl, title: domain, height, widthMode }),
-            },
-          });
-          return;
-        } catch (err) {
-          console.warn("[Web Companion] insertContent failed:", err);
-        }
-      }
-
-      // 方案 C：在 Markdown 模式下插入官方语法
-      const mdCode = `\n\`\`\`edgeever-plugin-embed\n${JSON.stringify({
-        id: `embed_${Date.now()}`,
-        pluginId: "org.edgeever.plugins.web-companion",
+  if (pluginContext?.editor?.insertEmbed) {
+    try {
+      await pluginContext.editor.insertEmbed({
         type: "web-view",
         resourceId: targetUrl,
         title: domain,
-        dataJson: JSON.stringify({ url: targetUrl, title: domain, height, widthMode }),
-      })}\n\`\`\`\n`;
-
-      if (context.editor?.insertAtCursor) {
-        try {
-          await context.editor.insertAtCursor(mdCode);
-          return;
-        } catch (_) {}
-      }
-
-      try {
-        document.execCommand("insertText", false, mdCode);
-      } catch (_) {}
-    }
-
-    function openInsertDialog() {
-      promptInsertWebUrl((url) => {
-        executeInsertWeb(url);
+        data: defaultAttrs
       });
+      return;
+    } catch (err) {
+      console.warn("[Web Companion] insertEmbed failed, fallback to editor instance:", err);
     }
-
-    // 3. 输入 /web 快捷触发处理
-    function handleEditorKeyDown(e) {
-      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-        const sel = window.getSelection();
-        if (!sel || !sel.isCollapsed || !sel.anchorNode) return;
-
-        const node = sel.anchorNode;
-        const text = node.textContent || "";
-        const offset = sel.anchorOffset;
-
-        if (offset >= 4 && text.slice(offset - 4, offset).toLowerCase() === "/web") {
-          const prefix = text.slice(0, offset - 4);
-          const isAtStart = offset === 4 || /[\s\n]$/.test(prefix);
-
-          if (isAtStart) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            try {
-              const range = sel.getRangeAt(0);
-              const newRange = document.createRange();
-              newRange.setStart(node, offset - 4);
-              newRange.setEnd(node, offset);
-              sel.removeAllRanges();
-              sel.addRange(newRange);
-              document.execCommand("delete");
-            } catch (_) {}
-
-            openInsertDialog();
-          }
+  }
+  const editor = pluginContext?.editor?.getInstance ? pluginContext.editor.getInstance() : null;
+  if (editor?.commands?.insertContent) {
+    try {
+      const embedId = `embed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      editor.commands.insertContent({
+        type: "edgeeverPluginEmbed",
+        attrs: {
+          id: embedId,
+          pluginId: "org.edgeever.plugins.web-companion",
+          type: "web-view",
+          resourceId: targetUrl,
+          title: domain,
+          dataJson: JSON.stringify(defaultAttrs),
+          attrs: defaultAttrs
         }
+      });
+      return;
+    } catch (err) {
+      console.warn("[Web Companion] insertContent failed:", err);
+    }
+  }
+  const mdCode = `
+\`\`\`edgeever-plugin-embed
+${JSON.stringify({
+    id: `embed_${Date.now()}`,
+    pluginId: "org.edgeever.plugins.web-companion",
+    type: "web-view",
+    resourceId: targetUrl,
+    title: domain,
+    dataJson: JSON.stringify(defaultAttrs),
+    attrs: defaultAttrs
+  })}
+\`\`\`
+`;
+  if (pluginContext?.editor?.insertAtCursor) {
+    try {
+      await pluginContext.editor.insertAtCursor(mdCode);
+      return;
+    } catch {
+    }
+  }
+  try {
+    document.execCommand("insertText", false, mdCode);
+  } catch {
+  }
+}
+function openInsertDialog() {
+  InsertDialog.show((url) => {
+    executeInsertWeb(url);
+  });
+}
+function handleEditorKeyDown(e) {
+  if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode) return;
+    const node = sel.anchorNode;
+    const text = node.textContent || "";
+    const offset = sel.anchorOffset;
+    if (offset >= 4 && text.slice(offset - 4, offset).toLowerCase() === "/web") {
+      const prefix = text.slice(0, offset - 4);
+      const isAtStart = offset === 4 || /[\s\n]$/.test(prefix);
+      if (isAtStart) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const newRange = document.createRange();
+          newRange.setStart(node, offset - 4);
+          newRange.setEnd(node, offset);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+          document.execCommand("delete");
+        } catch {
+        }
+        openInsertDialog();
       }
     }
-
+  }
+}
+function onGlobalKeydown(e) {
+  if ((e.altKey || e.metaKey) && (e.key === "w" || e.key === "W") && !e.shiftKey && !e.ctrlKey) {
+    const activeEl = document.activeElement;
+    const isEditing = activeEl && ["INPUT", "TEXTAREA"].includes(activeEl.tagName);
+    if (!isEditing || activeEl?.closest(".edgeever-web-modal")) {
+      e.preventDefault();
+      openInsertDialog();
+    }
+  }
+}
+var index_default = {
+  activate(context) {
+    pluginContext = context;
+    ensureInjectedStyle();
+    if (context.editor?.embeds?.register) {
+      const rendererDef = {
+        type: "web-view",
+        title: "\u771F\u5B9E\u6D4F\u89C8\u5668\u89C6\u7A97 (Web Embed)",
+        mount(container, data) {
+          return mountBrowserCard(container, data);
+        },
+        render(container, data) {
+          return mountBrowserCard(container, data);
+        }
+      };
+      try {
+        context.editor.embeds.register(rendererDef);
+        console.log("[Web Companion] Registered 'web-view' electron renderer successfully.");
+      } catch (err) {
+        console.warn("[Web Companion] Register 'web-view' failed:", err);
+      }
+      try {
+        context.editor.embeds.register({
+          ...rendererDef,
+          type: "web-companion"
+        });
+      } catch {
+      }
+    }
     document.addEventListener("keydown", handleEditorKeyDown, true);
-
-    // 4. 全局快捷键 Alt+W 唤起
-    const onGlobalKeydown = (e) => {
-      if ((e.altKey || e.metaKey) && (e.key === "w" || e.key === "W") && !e.shiftKey && !e.ctrlKey) {
-        const isEditing = ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName);
-        if (!isEditing || document.activeElement?.closest(".edgeever-web-modal")) {
-          e.preventDefault();
-          openInsertDialog();
-        }
-      }
-    };
     window.addEventListener("keydown", onGlobalKeydown, true);
-
-    // 5. 注册命令
     if (context.commands?.register) {
       context.commands.register({
         id: "web-insert-iframe",
-        title: "Web Companion: /web 插入网页 (Web Embed)",
+        title: "Web Companion: /web \u63D2\u5165\u6D4F\u89C8\u5668\u89C6\u7A97 (Web Embed)",
         shortcut: "Alt-W",
         run: () => openInsertDialog(),
-        execute: () => openInsertDialog(),
+        execute: () => openInsertDialog()
       });
     }
-
     if (context.ui?.commands?.register) {
       context.ui.commands.register({
         id: "web-companion.insert",
-        name: "Web Companion: /web 插入网页",
+        name: "Web Companion: /web \u63D2\u5165\u6D4F\u89C8\u5668\u89C6\u7A97",
         shortcut: "Alt+W",
-        execute: () => openInsertDialog(),
+        execute: () => openInsertDialog()
       });
     }
-
-    console.log("[Web Companion] v1.3.1 initialized successfully.");
+    console.log(
+      "%c[EdgeEver Web Companion] v1.4.0 Loaded - Electron WebView Architecture Active",
+      "background:#38bdf8;color:#000;font-weight:bold;padding:2px 6px;border-radius:3px;"
+    );
   },
-
   deactivate() {
-    if (window.__edgeever_wc_observer) {
-      try {
-        window.__edgeever_wc_observer.disconnect();
-      } catch (_) {}
-      window.__edgeever_wc_observer = null;
+    document.removeEventListener("keydown", handleEditorKeyDown, true);
+    window.removeEventListener("keydown", onGlobalKeydown, true);
+    InsertDialog.close();
+    if (injectedStyleEl) {
+      injectedStyleEl.remove();
+      injectedStyleEl = null;
     }
-    document.querySelectorAll(".edgeever-web-modal-backdrop, .edgeever-web-floating-trigger").forEach((el) => el.remove());
-    document.getElementById("edgeever-web-companion-style")?.remove();
     console.log("[Web Companion] deactivated.");
-  },
+  }
+};
+export {
+  index_default as default
 };

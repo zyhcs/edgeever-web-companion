@@ -1,0 +1,31 @@
+{
+  "name": "edgeever-web-companion",
+  "version": "1.4.0",
+  "description": "EdgeEver 笔记内嵌真实浏览器伴侣：Electron WebView 优先、自适应全宽、全功能 Omnibox 与多模式容灾渲染",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=main.js",
+    "build:watch": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=main.js --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zyhcs/edgeever-web-companion.git"
+  },
+  "keywords": [
+    "edgeever",
+    "edgeever-plugin",
+    "webview",
+    "electron",
+    "browser",
+    "embed"
+  ],
+  "author": "zyhcs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
